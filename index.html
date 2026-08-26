@@ -8,7 +8,11 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Workout">
 <meta name="theme-color" content="#0b0e14">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" type="image/svg+xml" href="icon.svg">
 <title>Workout Tracker</title>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   :root {
     --bg: #0b0e14;
@@ -226,9 +230,9 @@
   .rule .rt b { display: block; margin-bottom: 2px; }
   .rule .rt span { color: var(--muted); font-size: 13.5px; }
 
-  /* Setup overlay */
-  #setup-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: none; align-items: center; justify-content: center; padding: 24px; }
-  #setup-overlay .box { background: var(--surface); border: 1px solid var(--border); border-radius: 22px; padding: 34px 26px; max-width: 420px; width: 100%; text-align: center; }
+  /* Sign-in overlay */
+  #signin-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 200; display: none; align-items: center; justify-content: center; padding: 24px; }
+  #signin-overlay .box { background: var(--surface); border: 1px solid var(--border); border-radius: 22px; padding: 34px 26px; max-width: 420px; width: 100%; text-align: center; }
 
   .toast { position: fixed; left: 50%; bottom: calc(110px + var(--safe-bottom)); transform: translateX(-50%); background: var(--surface3); color: var(--text); padding: 12px 20px; border-radius: 999px; font-weight: 700; font-size: 14px; z-index: 120; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; border: 1px solid var(--border); }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
@@ -236,18 +240,17 @@
 </head>
 <body>
 
-<!-- Setup overlay (same persistence flow as Finance Tracker) -->
-<div id="setup-overlay">
+<!-- Google sign-in overlay (same Drive-sync model as the Finance Tracker) -->
+<div id="signin-overlay">
   <div class="box">
     <div style="font-size:52px; margin-bottom:14px;">🏋️</div>
     <h2 style="font-size:24px; font-weight:900; margin-bottom:8px;">Workout Tracker</h2>
-    <p class="muted" style="margin-bottom:26px; line-height:1.6;">Your training log is saved to a JSON file on your computer — it persists across sessions and syncs via OneDrive automatically.</p>
-    <div style="display:flex; flex-direction:column; gap:10px;">
-      <button class="btn btn-primary btn-block btn-lg" onclick="chooseNewFile()">Create new data file</button>
-      <button class="btn btn-outline btn-block btn-lg" onclick="openExistingFile()">Open existing data file</button>
-    </div>
-    <p class="faint" style="font-size:12px; margin-top:16px;">You'll choose a location once. After that it opens automatically.</p>
-    <p id="setup-fallback" class="faint" style="font-size:12px; margin-top:14px; display:none; line-height:1.5;"></p>
+    <p class="muted" style="margin-bottom:26px; line-height:1.6;">Sign in with Google to sync your training log across all your devices.</p>
+    <button class="btn btn-primary btn-block btn-lg" onclick="signIn()" style="display:flex; align-items:center; justify-content:center; gap:10px;">
+      <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><path fill="#1a0d05" d="M17.6 9.2c0-.6-.05-1.2-.15-1.7H9v3.3h4.8a4.1 4.1 0 01-1.8 2.7v2.2h2.9c1.7-1.6 2.7-3.9 2.7-6.5z"/><path fill="#1a0d05" d="M9 18c2.4 0 4.5-.8 6-2.2l-2.9-2.2c-.8.5-1.8.9-3.1.9-2.4 0-4.4-1.6-5.1-3.8H.9v2.3A9 9 0 009 18z"/><path fill="#1a0d05" d="M3.9 10.7a5.4 5.4 0 010-3.4V5H.9a9 9 0 000 8l3-2.3z"/><path fill="#1a0d05" d="M9 3.6c1.3 0 2.5.5 3.4 1.3l2.6-2.6A9 9 0 00.9 5l3 2.3C4.6 5.2 6.6 3.6 9 3.6z"/></svg>
+      Sign in with Google
+    </button>
+    <p class="faint" style="font-size:12px; margin-top:16px; line-height:1.5;">Your data lives only in your own Google Drive (a file named <b>workout-data.json</b>). No server, no shared database.</p>
   </div>
 </div>
 
@@ -396,26 +399,34 @@ let state = {
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 
 /* =========================================================
-   PERSISTENCE — File System Access API (same as Finance Tracker)
-   with automatic reconnect via IndexedDB handle.
+   PERSISTENCE — Google Drive + IndexedDB cache
+   (same model as the Finance Tracker: sign in with Google, keep one JSON
+    file in your Drive, cached locally in IndexedDB for instant/offline load)
    ========================================================= */
-let _fileHandle = null;
-let _saveTimer = null;
-const FS_SUPPORTED = typeof window.showSaveFilePicker === 'function';
+// Web OAuth Client ID. GitHub Pages serves every repo of one account from the
+// SAME origin (https://<user>.github.io), so the finance app's existing Client
+// ID already authorizes this app. Replace with your own to host elsewhere.
+const CLIENT_ID = '168405386494-tl577olfbs8sjln89q5rm97jn3euimi7.apps.googleusercontent.com';
+const SCOPES = 'https://www.googleapis.com/auth/drive';
+const FILE_NAME = 'workout-data.json';
 
-function _idb(mode) {
+let _accessToken = null, _driveFileId = null, _grantedScopes = '', _saveTimer = null, _db = null;
+
+function _openDB() {
   return new Promise((res, rej) => {
-    const req = indexedDB.open('wt_storage', 1);
-    req.onupgradeneeded = e => e.target.result.createObjectStore('handles');
-    req.onsuccess = e => res(e.target.result.transaction('handles', mode).objectStore('handles'));
+    const req = indexedDB.open('workout-tracker', 1);
+    req.onupgradeneeded = e => e.target.result.createObjectStore('data');
+    req.onsuccess = e => res(e.target.result);
     req.onerror = () => rej(req.error);
   });
 }
-async function _saveHandle(h) { try { const s = await _idb('readwrite'); s.put(h, 'main'); } catch (e) {} }
-async function _loadHandle() {
+async function _saveLocal() {
+  try { if (!_db) _db = await _openDB(); _db.transaction('data', 'readwrite').objectStore('data').put(state, 'state'); } catch (e) {}
+}
+async function _loadLocal() {
   try {
-    const s = await _idb('readonly');
-    return await new Promise((res, rej) => { const r = s.get('main'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+    if (!_db) _db = await _openDB();
+    return await new Promise((res, rej) => { const r = _db.transaction('data', 'readonly').objectStore('data').get('state'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   } catch (e) { return null; }
 }
 
@@ -429,75 +440,135 @@ function _applyDefaults() {
   if (!('active' in state)) state.active = null;
 }
 
-function save() {
-  clearTimeout(_saveTimer);
-  _saveTimer = setTimeout(_writeToDisk, 350);
-}
-async function _writeToDisk() {
-  if (!_fileHandle) return;
-  try {
-    const w = await _fileHandle.createWritable();
-    await w.write(JSON.stringify(state, null, 2));
-    await w.close();
-    _showSaved();
-  } catch (e) { console.error('Save failed:', e); }
-}
 function _showSaved() {
   const el = document.getElementById('save-indicator');
+  if (!el) return;
   el.style.opacity = '1';
   setTimeout(() => el.style.opacity = '0', 1400);
 }
 
-async function initStorage() {
-  if (!FS_SUPPORTED) {
-    document.getElementById('setup-fallback').style.display = 'block';
-    document.getElementById('setup-fallback').textContent =
-      'Note: this browser doesn\'t support saving to a file. Open on desktop Chrome/Edge for OneDrive file sync.';
-  }
-  const handle = await _loadHandle();
-  if (handle) {
-    let perm = await handle.queryPermission({ mode: 'readwrite' });
-    if (perm !== 'granted') { try { perm = await handle.requestPermission({ mode: 'readwrite' }); } catch (e) {} }
-    if (perm === 'granted') { _fileHandle = handle; await _readFromFile(); return; }
-  }
-  _showSetup();
+function hashStr(s) { let h = 0; for (let i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) | 0; } return h; }
+
+async function _readDriveFile(id) {
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files/${id}?alt=media`, { headers: { Authorization: 'Bearer ' + _accessToken } });
+  if (!res.ok) return null;
+  const t = await res.text();
+  return t.trim() ? t : null;
 }
-async function _readFromFile() {
+async function _findVisibleFile() {
+  const q = encodeURIComponent(`name='${FILE_NAME}' and trashed=false`);
+  const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,modifiedTime)&orderBy=modifiedTime desc`, { headers: { Authorization: 'Bearer ' + _accessToken } });
+  const data = await res.json();
+  return data.files?.[0]?.id || null;
+}
+async function _createVisibleFile(obj) {
+  const boundary = 'wtb' + Math.abs(hashStr(FILE_NAME + _accessToken.slice(0, 8)));
+  const meta = { name: FILE_NAME };
+  const body =
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(meta)}\r\n` +
+    `--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(obj, null, 2)}\r\n` +
+    `--${boundary}--`;
+  const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + _accessToken, 'Content-Type': `multipart/related; boundary=${boundary}` },
+    body
+  });
+  if (!res.ok) throw new Error('create failed (' + res.status + '): ' + (await res.text()).slice(0, 200));
+  return (await res.json()).id;
+}
+function _hasDriveWriteScope() { return (_grantedScopes || '').split(/\s+/).includes('https://www.googleapis.com/auth/drive'); }
+
+async function _loadFromDrive() {
+  const id = await _findVisibleFile();
+  if (id) { _driveFileId = id; const t = await _readDriveFile(id); if (t) state = JSON.parse(t); return; }
+  // No file yet — create one seeded with current (cached/default) state.
+  _driveFileId = await _createVisibleFile(state);
+}
+async function _saveToDrive() {
+  if (!_accessToken || !_driveFileId) return;
   try {
-    const file = await _fileHandle.getFile();
-    const text = await file.text();
-    if (text.trim()) state = JSON.parse(text);
-  } catch (e) {}
+    await fetch(`https://www.googleapis.com/upload/drive/v3/files/${_driveFileId}?uploadType=media`,
+      { method: 'PATCH', headers: { Authorization: 'Bearer ' + _accessToken, 'Content-Type': 'application/json' }, body: JSON.stringify(state, null, 2) });
+    _showSaved();
+  } catch (e) { console.error('Drive save failed', e); }
+}
+
+function save() {
+  _saveLocal();
+  clearTimeout(_saveTimer);
+  _saveTimer = setTimeout(_saveToDrive, 700);
+}
+
+function _updateAuthUI(signedIn) {
+  const ov = document.getElementById('signin-overlay');
+  if (ov) ov.style.display = signedIn ? 'none' : 'flex';
+}
+
+function _gisReady() { return !!(window.google && google.accounts && google.accounts.oauth2); }
+function _waitGIS() {
+  return new Promise(res => {
+    if (_gisReady()) return res(true);
+    let n = 0; const t = setInterval(() => { if (_gisReady() || ++n > 50) { clearInterval(t); res(_gisReady()); } }, 100);
+  });
+}
+
+async function signIn() {
+  if (!(await _waitGIS())) { alert('Google sign-in library did not load. Check your connection and try again.'); return; }
+  const client = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID, scope: SCOPES,
+    callback: async (r) => {
+      if (r.error) return;
+      _accessToken = r.access_token; _grantedScopes = r.scope || '';
+      if (!_hasDriveWriteScope()) {
+        alert('Google didn\'t grant Drive access.\n\nIn Google Cloud Console → OAuth consent screen → Data Access, add the ".../auth/drive" scope, then sign in again.');
+        return;
+      }
+      _updateAuthUI(true);
+      try { await _loadFromDrive(); }
+      catch (e) { alert('Could not load or create your Drive data file:\n' + e.message); return; }
+      _applyDefaults(); await _saveLocal(); renderAll(); toast('Synced from Google Drive');
+    }
+  });
+  client.requestAccessToken();
+}
+
+function signOut() {
+  if (_accessToken) { try { google.accounts.oauth2.revoke(_accessToken); } catch (e) {} }
+  _accessToken = null; _driveFileId = null;
+  _updateAuthUI(false); closeSheet();
+}
+
+async function loadState() {
+  // 1. Instant paint from local cache (works offline).
+  const cached = await _loadLocal();
+  if (cached) state = cached;
   _applyDefaults();
-  document.getElementById('setup-overlay').style.display = 'none';
   renderAll();
-}
-function _showSetup() { document.getElementById('setup-overlay').style.display = 'flex'; }
-
-async function chooseNewFile() {
-  if (!FS_SUPPORTED) { alert('This browser can\'t create a data file. Use desktop Chrome or Edge.'); return; }
+  _updateAuthUI(false);
+  // 2. Silent re-auth if a Google session already exists → pull latest from Drive.
+  if (!(await _waitGIS())) return;
   try {
-    _fileHandle = await window.showSaveFilePicker({
-      suggestedName: 'workout-data.json',
-      types: [{ description: 'JSON Data', accept: { 'application/json': ['.json'] } }],
+    await new Promise((resolve) => {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID, scope: SCOPES, prompt: '',
+        callback: async (r) => {
+          if (!r.error && r.access_token) {
+            _accessToken = r.access_token; _grantedScopes = r.scope || '';
+            if (_hasDriveWriteScope()) {
+              _updateAuthUI(true);
+              try { await _loadFromDrive(); _applyDefaults(); await _saveLocal(); renderAll(); } catch (e) { console.error('Drive load failed', e); }
+            }
+          }
+          resolve();
+        }
+      });
+      client.requestAccessToken({ prompt: '' });
+      setTimeout(resolve, 3000);
     });
-    await _saveHandle(_fileHandle);
-    _applyDefaults();
-    await _writeToDisk();
-    document.getElementById('setup-overlay').style.display = 'none';
-    renderAll();
-  } catch (e) { if (e.name !== 'AbortError') alert('Could not create file: ' + e.message); }
-}
-async function openExistingFile() {
-  if (!FS_SUPPORTED) { alert('This browser can\'t open a data file. Use desktop Chrome or Edge.'); return; }
-  try {
-    [_fileHandle] = await window.showOpenFilePicker({ types: [{ description: 'JSON Data', accept: { 'application/json': ['.json'] } }] });
-    await _saveHandle(_fileHandle);
-    await _readFromFile();
-  } catch (e) { if (e.name !== 'AbortError') alert('Could not open file: ' + e.message); }
+  } catch (e) {}
 }
 
-/* Export / Import (works everywhere — backup + move between devices) */
+/* Export / Import backup (works everywhere — extra safety net) */
 function exportData() {
   const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -1174,10 +1245,8 @@ function openSettings() {
     <label class="btn btn-outline btn-block mt-s" style="text-align:center;">⬆︎ Import backup
       <input type="file" accept=".json" style="display:none" onchange="importData(this.files[0])">
     </label>
-    ${FS_SUPPORTED ? `<button class="btn btn-ghost btn-block mt-s" onclick="relinkFile()">🔗 Link / change data file</button>` : ''}
-    <p class="faint" style="font-size:12px; margin-top:14px; line-height:1.5;">${FS_SUPPORTED
-      ? 'Your data auto-saves to the linked JSON file and syncs via OneDrive. Use Export to move it to another device.'
-      : 'This browser saves to its own storage. Use Export/Import to back up or move your data between devices.'}</p>`;
+    <button class="btn btn-ghost btn-block mt-s" onclick="signOut()">Sign out of Google</button>
+    <p class="faint" style="font-size:12px; margin-top:14px; line-height:1.5;">Your log auto-saves to <b>workout-data.json</b> in your Google Drive and syncs to every device you sign in on. Export is an extra local backup.</p>`;
   openSheet(html);
 }
 function saveSettings() {
@@ -1187,11 +1256,6 @@ function saveSettings() {
   state.settings.deload = document.getElementById('set-deload').checked;
   save(); closeSheet(); renderAll(); toast('Settings saved');
 }
-async function relinkFile() {
-  closeSheet();
-  await chooseNewFile();
-}
-
 /* =========================================================
    SHEET / TOAST helpers
    ========================================================= */
@@ -1222,7 +1286,10 @@ window.addEventListener('focus', () => { if (state.active && currentTab === 'tod
 /* =========================================================
    INIT
    ========================================================= */
-initStorage();
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(e => console.error('SW failed:', e)));
+}
+loadState();
 </script>
 </body>
 </html>
