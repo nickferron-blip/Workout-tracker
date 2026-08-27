@@ -239,6 +239,49 @@
 
   .toast { position: fixed; left: 50%; bottom: calc(110px + var(--safe-bottom)); transform: translateX(-50%); background: var(--surface3); color: var(--text); padding: 12px 20px; border-radius: 999px; font-weight: 700; font-size: 14px; z-index: 120; opacity: 0; transition: opacity .25s, transform .25s; pointer-events: none; border: 1px solid var(--border); }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(-6px); }
+
+  /* Chips (muscle groups / equipment) */
+  .chip-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; padding: 9px 13px; border-radius: 999px; font-size: 13px; font-weight: 700; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); cursor: pointer; }
+  .chip.on { background: var(--accent); color: #1a0d05; border-color: var(--accent); }
+  .chip.sm { padding: 5px 10px; font-size: 12px; }
+
+  /* Schedule editor rows */
+  .sched-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .sched-row:last-child { border-bottom: none; }
+  .sched-row .dl { width: 78px; font-weight: 700; color: var(--muted); flex-shrink: 0; font-size: 14px; }
+  .sched-row select { flex: 1; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 10px; padding: 11px 12px; font-size: 15px; font-weight: 600; outline: none; -webkit-appearance: none; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%238a94a6' viewBox='0 0 16 16'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; }
+
+  /* Workout list card */
+  .wk-item { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 15px 16px; margin-bottom: 10px; cursor: pointer; display: flex; align-items: center; gap: 12px; }
+  .wk-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .wk-name { font-weight: 800; font-size: 16px; }
+  .wk-meta { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+
+  /* Editor exercise rows */
+  .ed-ex { display: flex; align-items: center; gap: 10px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+  .ed-ex:last-child { border-bottom: none; }
+  .ed-ex .grow { min-width: 0; }
+  .ed-ex .exn { font-weight: 700; font-size: 15px; }
+  .ed-ex .exs { font-size: 12px; color: var(--muted); margin-top: 1px; }
+  .reorder { display: flex; flex-direction: column; gap: 1px; }
+  .reorder button, .ed-del { background: none; border: none; color: var(--faint); cursor: pointer; padding: 3px; font-size: 13px; line-height: 1; }
+  .ed-del { color: var(--red); font-size: 16px; }
+
+  /* Color swatches */
+  .swatch-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .swatch { width: 30px; height: 30px; border-radius: 9px; cursor: pointer; border: 2px solid transparent; }
+  .swatch.on { border-color: #fff; }
+
+  /* Exercise picker */
+  .pick-search { width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text); border-radius: 11px; padding: 12px 14px; font-size: 16px; outline: none; margin-bottom: 6px; }
+  .pick-group { font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin: 16px 0 4px; }
+  .pick-item { display: flex; align-items: center; gap: 12px; padding: 12px 2px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .pick-item .pn { font-weight: 600; font-size: 15px; }
+  .pick-item .tag { font-size: 11px; color: var(--faint); font-weight: 700; margin-top: 1px; }
+  .pick-check { width: 26px; height: 26px; border-radius: 8px; border: 2px solid var(--border); display: flex; align-items: center; justify-content: center; color: transparent; font-size: 14px; flex-shrink: 0; }
+  .pick-item.on .pick-check { background: var(--green); border-color: var(--green); color: #05230f; }
 </style>
 </head>
 <body>
@@ -390,16 +433,200 @@ const RULES = [
   { i:'🔁', t:'The 5-Week Deload Rule', s:'Every 5th–6th week, cut weights 25% or stop 2–3 reps short of failure. Don\'t skip it.' },
 ];
 
+/* Muscle groups & equipment. Equipment codes: db dumbbell · bb barbell ·
+   sm smith · sq squat rack · ca cable · ma fixed/plate machine · bw bodyweight.
+   Only db/bb/sm/sq/ca are user-toggleable; 'gym' means everything is available,
+   'ma' needs gym, 'bw' is always available. */
+const MUSCLE = ['chest','back','shoulders','biceps','triceps','quads','hamstrings','glutes','calves','abs','traps','forearms'];
+const MUSCLE_LABEL = { chest:'Chest', back:'Back', shoulders:'Shoulders', biceps:'Biceps', triceps:'Triceps', quads:'Quads', hamstrings:'Hamstrings', glutes:'Glutes', calves:'Calves', abs:'Abs', traps:'Traps', forearms:'Forearms' };
+const EQUIP = [
+  { k:'gym', label:'Gym (all equipment)' },
+  { k:'db',  label:'Dumbbells' },
+  { k:'bb',  label:'Barbells' },
+  { k:'sm',  label:'Smith machine' },
+  { k:'sq',  label:'Squat racks' },
+  { k:'ca',  label:'Cable machine' },
+];
+const EQUIP_TAG = { db:'Dumbbell', bb:'Barbell', sm:'Smith', sq:'Squat rack', ca:'Cable', ma:'Machine', bw:'Bodyweight' };
+const WK_COLORS = ['#ff6a2b','#3aa0ff','#a479ff','#37d67a','#ffcb47','#ff5a5f','#2dd4bf','#f472b6'];
+const SEED_MUSCLES = { 1:['chest','biceps'], 2:['hamstrings','quads','calves'], 4:['shoulders','triceps'], 5:['back','traps'] };
+
+const EXERCISE_LIB = [
+  // Chest
+  {n:'Barbell Bench Press',m:['chest','triceps'],e:['bb'],t:'c'},
+  {n:'Incline Barbell Bench Press',m:['chest','shoulders'],e:['bb'],t:'c'},
+  {n:'Dumbbell Bench Press',m:['chest','triceps'],e:['db'],t:'c'},
+  {n:'Incline Dumbbell Press',m:['chest','shoulders'],e:['db'],t:'c'},
+  {n:'Flat Machine Press',m:['chest'],e:['ma'],t:'c'},
+  {n:'Incline Machine Press',m:['chest'],e:['ma'],t:'c'},
+  {n:'Smith Machine Bench Press',m:['chest','triceps'],e:['sm'],t:'c'},
+  {n:'Weighted Chest Dips',m:['chest','triceps'],e:['bw'],t:'c'},
+  {n:'Push-Up',m:['chest','triceps'],e:['bw'],t:'c'},
+  {n:'Dumbbell Flye',m:['chest'],e:['db'],t:'i'},
+  {n:'Incline Dumbbell Flyes',m:['chest'],e:['db'],t:'i'},
+  {n:'Cable Crossover',m:['chest'],e:['ca'],t:'i'},
+  {n:'Pec Deck',m:['chest'],e:['ma'],t:'i'},
+  // Back
+  {n:'Deadlift',m:['back','hamstrings','glutes'],e:['bb'],t:'c'},
+  {n:'Barbell Bent-Over Row',m:['back','biceps'],e:['bb'],t:'c'},
+  {n:'T-Bar Row',m:['back'],e:['bb','ma'],t:'c'},
+  {n:'Neutral Grip T-Bar Row',m:['back'],e:['bb'],t:'c'},
+  {n:'Chest-Supported Row',m:['back'],e:['ma','db'],t:'c'},
+  {n:'Single-Arm Dumbbell Row',m:['back'],e:['db'],t:'c'},
+  {n:'Seated Cable Row',m:['back'],e:['ca'],t:'c'},
+  {n:'Cable Row',m:['back'],e:['ca'],t:'c'},
+  {n:'Lat Pulldown',m:['back','biceps'],e:['ca','ma'],t:'c'},
+  {n:'Neutral Grip Cable Pulldown',m:['back'],e:['ca'],t:'c'},
+  {n:'Pull-Up',m:['back','biceps'],e:['bw'],t:'c'},
+  {n:'Chin-Up',m:['back','biceps'],e:['bw'],t:'c'},
+  {n:'Straight-Arm Pulldown',m:['back'],e:['ca'],t:'i'},
+  {n:'Machine Row',m:['back'],e:['ma'],t:'c'},
+  // Traps
+  {n:'Barbell Shrug',m:['traps'],e:['bb'],t:'i'},
+  {n:'Dumbbell Shrugs',m:['traps'],e:['db'],t:'i'},
+  {n:'Machine Shrugs',m:['traps'],e:['ma'],t:'i'},
+  {n:'Smith Machine Shrug',m:['traps'],e:['sm'],t:'i'},
+  // Shoulders
+  {n:'Overhead Barbell Press',m:['shoulders','triceps'],e:['bb'],t:'c'},
+  {n:'Seated Dumbbell Shoulder Press',m:['shoulders','triceps'],e:['db'],t:'c'},
+  {n:'Machine Shoulder Press',m:['shoulders'],e:['ma'],t:'c'},
+  {n:'Smith Machine Shoulder Press',m:['shoulders'],e:['sm'],t:'c'},
+  {n:'Arnold Press',m:['shoulders'],e:['db'],t:'c'},
+  {n:'Dumbbell Lateral Raise',m:['shoulders'],e:['db'],t:'i'},
+  {n:'Standing Cable Lateral Raise',m:['shoulders'],e:['ca'],t:'i'},
+  {n:'Machine Lateral Raise',m:['shoulders'],e:['ma'],t:'i'},
+  {n:'Reverse Pec-Deck',m:['shoulders','back'],e:['ma'],t:'i'},
+  {n:'Cable Face Pulls',m:['shoulders','back'],e:['ca'],t:'i'},
+  {n:'Dumbbell Rear Delt Flye',m:['shoulders'],e:['db'],t:'i'},
+  {n:'Dumbbell Front Raise',m:['shoulders'],e:['db'],t:'i'},
+  {n:'Upright Row',m:['shoulders','traps'],e:['bb','db','ca'],t:'c'},
+  // Biceps
+  {n:'Barbell Curl',m:['biceps'],e:['bb'],t:'i'},
+  {n:'EZ-Bar Bicep Curl',m:['biceps'],e:['bb'],t:'i'},
+  {n:'Dumbbell Bicep Curl',m:['biceps'],e:['db'],t:'i'},
+  {n:'Incline Dumbbell Curl',m:['biceps'],e:['db'],t:'i'},
+  {n:'Hammer Curl',m:['biceps','forearms'],e:['db'],t:'i'},
+  {n:'Preacher Curl',m:['biceps'],e:['db','ma','bb'],t:'i'},
+  {n:'Cable Curl',m:['biceps'],e:['ca'],t:'i'},
+  {n:'Concentration Curl',m:['biceps'],e:['db'],t:'i'},
+  {n:'Machine Curl',m:['biceps'],e:['ma'],t:'i'},
+  // Triceps
+  {n:'Close-Grip Bench Press',m:['triceps','chest'],e:['bb'],t:'c'},
+  {n:'Tricep Rope Pushdown',m:['triceps'],e:['ca'],t:'i'},
+  {n:'Bar Cable Pushdown',m:['triceps'],e:['ca'],t:'i'},
+  {n:'Overhead Cable Tricep Extension',m:['triceps'],e:['ca'],t:'i'},
+  {n:'Cross-Body Extension',m:['triceps'],e:['ca'],t:'i'},
+  {n:'Skull Crusher',m:['triceps'],e:['bb','db'],t:'i'},
+  {n:'Dumbbell Overhead Extension',m:['triceps'],e:['db'],t:'i'},
+  {n:'Triceps Dip',m:['triceps'],e:['bw'],t:'c'},
+  {n:'Machine Triceps Extension',m:['triceps'],e:['ma'],t:'i'},
+  // Quads
+  {n:'Back Squat',m:['quads','glutes'],e:['bb','sq'],t:'c'},
+  {n:'Front Squat',m:['quads'],e:['bb','sq'],t:'c'},
+  {n:'Smith Machine Squat',m:['quads','glutes'],e:['sm'],t:'c'},
+  {n:'Hack Squat',m:['quads'],e:['ma'],t:'c'},
+  {n:'Leg Press',m:['quads','glutes'],e:['ma'],t:'c'},
+  {n:'Pendulum Squat',m:['quads'],e:['ma'],t:'c'},
+  {n:'Bulgarian Split Squat',m:['quads','glutes'],e:['db','sm'],t:'c'},
+  {n:'Goblet Squat',m:['quads'],e:['db'],t:'c'},
+  {n:'Walking Lunge',m:['quads','glutes'],e:['db','bb'],t:'c'},
+  {n:'Leg Extensions',m:['quads'],e:['ma'],t:'i'},
+  // Hamstrings
+  {n:'Romanian Deadlift (RDL)',m:['hamstrings','glutes'],e:['bb','db'],t:'c'},
+  {n:'Lying Hamstring Curl',m:['hamstrings'],e:['ma'],t:'i'},
+  {n:'Seated Hamstring Curl',m:['hamstrings'],e:['ma'],t:'i'},
+  {n:'Stiff-Leg Deadlift',m:['hamstrings'],e:['bb','db'],t:'c'},
+  {n:'Good Morning',m:['hamstrings','back'],e:['bb'],t:'c'},
+  {n:'Hyperextension',m:['hamstrings','glutes','back'],e:['bw','ma'],t:'i'},
+  {n:'Cable Pull-Through',m:['hamstrings','glutes'],e:['ca'],t:'c'},
+  // Glutes
+  {n:'Hip Thrust',m:['glutes','hamstrings'],e:['bb','sm'],t:'c'},
+  {n:'Barbell Glute Bridge',m:['glutes'],e:['bb'],t:'c'},
+  {n:'Cable Glute Kickback',m:['glutes'],e:['ca'],t:'i'},
+  {n:'Machine Hip Abduction',m:['glutes'],e:['ma'],t:'i'},
+  // Calves
+  {n:'Standing Calf Raise',m:['calves'],e:['ma','sm'],t:'i'},
+  {n:'Seated Calf Raise',m:['calves'],e:['ma'],t:'i'},
+  {n:'Leg Press Calf Raise',m:['calves'],e:['ma'],t:'i'},
+  {n:'Dumbbell Calf Raise',m:['calves'],e:['db'],t:'i'},
+  // Abs
+  {n:'Hanging Leg Raise',m:['abs'],e:['bw'],t:'i'},
+  {n:'Cable Crunch',m:['abs'],e:['ca'],t:'i'},
+  {n:'Plank',m:['abs'],e:['bw'],t:'i'},
+  {n:'Machine Crunch',m:['abs'],e:['ma'],t:'i'},
+  {n:'Ab Wheel Rollout',m:['abs'],e:['bw'],t:'i'},
+  // Forearms
+  {n:'Barbell Wrist Curl',m:['forearms'],e:['bb'],t:'i'},
+  {n:'Reverse Curl',m:['forearms','biceps'],e:['bb','db'],t:'i'},
+  {n:"Farmer's Carry",m:['forearms','traps'],e:['db'],t:'c'},
+];
+
 /* =========================================================
    STATE
    ========================================================= */
 let state = {
   active: null,          // in-progress session
   history: [],           // completed sessions
-  settings: { unit: 'lb', restSeconds: 165, startDate: null, deload: false },
+  workouts: [],          // user-defined workouts
+  schedule: {},          // weekday (0=Sun..6=Sat) -> workoutId | null
+  settings: { unit: 'lb', restSeconds: 165, startDate: null, deload: false, equipment: ['gym'] },
 };
 
 function todayISO() { return new Date().toISOString().slice(0, 10); }
+
+/* Library index + workout helpers */
+const _libIndex = {};
+EXERCISE_LIB.forEach(x => { _libIndex[exKeyOf(x.n)] = x; });
+function exKeyOf(name) { return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
+function findLib(name) { return _libIndex[exKeyOf(name)] || null; }
+function getWorkout(id) { return (state.workouts || []).find(w => w.id === id) || null; }
+function scheduledWorkoutId(d) { const id = (state.schedule || {})[(d || new Date()).getDay()]; return id && getWorkout(id) ? id : null; }
+function ownedEquip() { const e = state.settings.equipment; return Array.isArray(e) && e.length ? e : ['gym']; }
+function exAvailable(ex) { const owned = ownedEquip(); if (owned.includes('gym')) return true; return (ex.e || []).some(tag => tag === 'bw' || owned.includes(tag)); }
+function trainingDaysCount() { return Object.values(state.schedule || {}).filter(id => id && getWorkout(id)).length; }
+
+/* Build the 4 built-in workouts + schedule from the original PROGRAM (migration) */
+function seedWorkouts() {
+  return DAY_ORDER.map(id => {
+    const d = PROGRAM.days[id];
+    return {
+      id: 'seed-' + id, name: d.name, color: d.color,
+      muscles: SEED_MUSCLES[id].slice(),
+      mobility: d.mobility.slice(),
+      exercises: d.exercises.map(ex => {
+        const name = ex.variants[0];
+        const lib = findLib(name);
+        return {
+          id: uid(), name,
+          muscles: lib ? lib.m.slice() : SEED_MUSCLES[id].slice(),
+          equip: lib ? lib.e.slice() : ['ma'],
+          type: lib ? lib.t : (ex.sets.some(s => s.k === 'backoff') ? 'c' : 'i'),
+          feeders: feederCount(ex),
+          sets: ex.sets.map(s => ({ k: s.k, r: s.r })),
+          note: ex.note || '',
+        };
+      }),
+    };
+  });
+}
+function defaultScheme(type) {
+  return type === 'c'
+    ? { feeders: 1, sets: [{ k: 'top', r: '6–8' }, { k: 'backoff', r: '8–10' }] }
+    : { feeders: 1, sets: [{ k: 'top', r: '10–12' }] };
+}
+function schemeText(feeders, sets) {
+  const parts = [];
+  if (feeders) parts.push(feeders + ' feeder' + (feeders > 1 ? 's' : ''));
+  const tops = (sets || []).filter(s => s.k === 'top');
+  const bo = (sets || []).find(s => s.k === 'backoff');
+  if (tops.length) parts.push((tops.length > 1 ? tops.length + ' top sets' : '1 top set') + (tops[0].r ? ' (' + tops[0].r + ')' : ''));
+  if (bo) parts.push('1 back-off' + (bo.r ? ' (' + bo.r + ')' : ''));
+  return parts.join('  •  ');
+}
+function schemeTextSets(sets) {
+  const f = (sets || []).filter(s => s.k === 'feeder').length;
+  return schemeText(f, (sets || []).filter(s => s.k !== 'feeder'));
+}
 
 /* =========================================================
    PERSISTENCE — Google Drive + IndexedDB cache
@@ -441,8 +668,38 @@ function _applyDefaults() {
   if (!state.settings.restSeconds) state.settings.restSeconds = 165;
   if (!state.settings.startDate) state.settings.startDate = todayISO();
   if (typeof state.settings.deload !== 'boolean') state.settings.deload = false;
+  if (!Array.isArray(state.settings.equipment) || !state.settings.equipment.length) state.settings.equipment = ['gym'];
   if (!Array.isArray(state.history)) state.history = [];
   if (!('active' in state)) state.active = null;
+  _migrateV2();
+}
+
+/* Migrate the old hardcoded PROGRAM model → editable workouts + schedule,
+   and re-key history entries by exercise name so progression is continuous. */
+function _migrateV2() {
+  if (!Array.isArray(state.workouts) || !state.workouts.length) state.workouts = seedWorkouts();
+  if (!state.schedule || typeof state.schedule !== 'object' || !Object.keys(state.schedule).length) {
+    state.schedule = {};
+    for (const [dow, v] of Object.entries(PROGRAM.schedule)) state.schedule[dow] = (v === 'rest' || !v) ? null : 'seed-' + v;
+  }
+  (state.history || []).forEach(s => {
+    const vals = Object.values(s.entries || {});
+    const alreadyV2 = s.workoutId && vals[0] && vals[0].name;
+    if (alreadyV2) return;
+    const day = (s.dayId != null) ? PROGRAM.days[s.dayId] : null;
+    if (!s.workoutId) s.workoutId = day ? 'seed-' + s.dayId : '';
+    if (!s.workoutName) s.workoutName = day ? day.name : 'Workout';
+    if (!s.color) s.color = day ? day.color : '#ff6a2b';
+    const ne = {};
+    for (const [k, en] of Object.entries(s.entries || {})) {
+      let name = en.name;
+      if (!name && day) { const dex = day.exercises.find(x => x.key === k); name = dex ? dex.variants[en.variant || 0] : k; }
+      if (!name) name = k;
+      ne[exKeyOf(name)] = { name, sets: en.sets || [] };
+    }
+    s.entries = ne;
+  });
+  if (state.active && !state.active.workoutId) state.active = null; // drop old-format in-progress session
 }
 
 function _showSaved() {
@@ -603,7 +860,6 @@ function unit() { return state.settings.unit; }
 function num(v) { const n = parseFloat(v); return isNaN(n) ? 0 : n; }
 function e1rm(w, r) { w = num(w); r = num(r); if (!w || !r) return 0; return w * (1 + r / 30); } // Epley
 function fmtWeight(w) { const n = num(w); return (Number.isInteger(n) ? n : n.toFixed(1)) + ' ' + unit(); }
-function scheduledDayId(d) { const s = PROGRAM.schedule[(d || new Date()).getDay()]; return s; }
 
 function weekNumber() {
   const start = new Date(state.settings.startDate + 'T00:00:00');
@@ -616,22 +872,6 @@ function deloadSuggested() {
   return w >= 5 && (w % 5 === 0 || w % 6 === 0);
 }
 
-/* Prescription helpers */
-function schemeText(ex) {
-  const parts = [];
-  if (ex.feeders) parts.push(ex.feeders);
-  const tops = ex.sets.filter(s => s.k === 'top').length;
-  const topReps = ex.sets.find(s => s.k === 'top');
-  if (tops === 1) parts.push('1 top set (' + topReps.r + ')');
-  else if (tops > 1) parts.push(tops + ' top sets (' + topReps.r + ')');
-  const bo = ex.sets.find(s => s.k === 'backoff');
-  if (bo) parts.push('1 back-off (' + bo.r + ')');
-  return parts.join('  •  ');
-}
-function findExercise(key) {
-  for (const d of Object.values(PROGRAM.days)) { const e = d.exercises.find(x => x.key === key); if (e) return e; }
-  return null;
-}
 /* How many feeder (ramp-up) sets an exercise prescribes, parsed from e.g. "1–2 feeders" */
 function feederCount(ex) {
   if (!ex.feeders) return 0;
@@ -701,8 +941,8 @@ function updateFab() {
    ========================================================= */
 function renderToday() {
   const el = document.getElementById('page-today');
-  const dow = new Date().getDay();
-  const schedId = scheduledDayId();
+  const schedId = scheduledWorkoutId();
+  const wko = schedId ? getWorkout(schedId) : null;
   const dateStr = new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
   const wk = weekNumber();
   let html = '';
@@ -720,73 +960,77 @@ function renderToday() {
     }</div></div>`;
   }
 
-  if (schedId === 'rest') {
+  if (!state.workouts.length) {
+    html += `<div class="empty"><div class="big">🏋️</div>No workouts yet — build one in <b>Program</b>.</div>
+      <button class="btn btn-primary btn-block btn-lg" onclick="showTab('program')">Build a workout →</button>`;
+    el.innerHTML = html; return;
+  }
+
+  if (!wko) {
     html += `<div class="card center" style="padding:32px 20px;">
         <div style="font-size:46px;">😴</div>
         <div style="font-size:20px; font-weight:800; margin-top:8px;">Rest Day</div>
-        <div class="muted" style="margin-top:4px;">Crucial for CNS & joint recovery. Sleep, hydrate, walk.</div>
-      </div>
-      <div class="section-label">Train anyway?</div>`;
-    html += dayPickerHTML();
+        <div class="muted" style="margin-top:4px;">Nothing scheduled today. Recover — or train anyway.</div>
+      </div>`;
+    if (state.active) html += activeBanner();
+    html += `<div class="section-label">Start a workout</div>` + workoutPickerHTML();
   } else {
-    const day = PROGRAM.days[schedId];
-    const resuming = state.active && state.active.dayId === schedId;
-    html += heroHTML(day, resuming);
-    html += `<button class="btn btn-primary btn-block btn-lg mt" onclick="startWorkout(${schedId})">${resuming ? 'Continue Workout' : 'Start Workout'} →</button>`;
-    if (state.active && state.active.dayId !== schedId) {
-      const ad = PROGRAM.days[state.active.dayId];
-      html += `<div class="banner deload mt"><span class="bi">▶️</span><div><b>${ad.name}</b> workout in progress. <a onclick="showTab('today')" style="color:var(--accent);font-weight:800;">Resume</a> or start today's.</div></div>`;
-    }
-    html += `<div class="section-label">Other workouts</div>`;
-    html += dayPickerHTML(schedId);
+    const resuming = state.active && state.active.workoutId === schedId;
+    html += heroHTML(wko, resuming);
+    html += `<button class="btn btn-primary btn-block btn-lg mt" onclick="startWorkout('${schedId}')">${resuming ? 'Continue Workout' : 'Start Workout'} →</button>`;
+    if (state.active && state.active.workoutId !== schedId) html += activeBanner();
+    const others = workoutPickerHTML(schedId);
+    if (others) html += `<div class="section-label">Other workouts</div>` + others;
   }
   el.innerHTML = html;
 }
 
-function heroHTML(day, resuming) {
-  return `<div class="hero" style="background:linear-gradient(135deg, ${day.color}, ${shade(day.color,-18)});">
+function activeBanner() {
+  const a = state.active; if (!a) return '';
+  return `<div class="banner deload mt"><span class="bi">▶️</span><div><b>${a.workoutName || 'Workout'}</b> in progress. <a onclick="showTab('today')" style="color:var(--accent);font-weight:800;">Resume</a> or start another.</div></div>`;
+}
+function heroHTML(wko, resuming) {
+  const muscles = (wko.muscles || []).map(m => MUSCLE_LABEL[m]).join(' · ');
+  return `<div class="hero" style="background:linear-gradient(135deg, ${wko.color}, ${shade(wko.color,-18)});">
       <div class="glow" style="background:#fff;"></div>
       <div style="color:#1a0d05;">
-        <div class="eyebrow">${resuming ? 'In progress · Day ' + day.id : "Today's session · Day " + day.id}</div>
-        <div class="day-name">${day.name}</div>
-        <div class="meta">${day.exercises.length} exercises · ${day.time}</div>
+        <div class="eyebrow">${resuming ? 'In progress' : "Today's session"}</div>
+        <div class="day-name">${wko.name || 'Workout'}</div>
+        <div class="meta">${wko.exercises.length} exercises${muscles ? ' · ' + muscles : ''}</div>
       </div>
     </div>`;
 }
-function dayPickerHTML(exclude) {
-  return '<div>' + DAY_ORDER.filter(id => id !== exclude).map(id => {
-    const d = PROGRAM.days[id];
-    return `<div class="ex" style="margin-bottom:10px; cursor:pointer;" onclick="startWorkout(${id})">
-        <div class="ex-head" style="align-items:center;">
-          <div class="ex-idx" style="background:${d.color}22; color:${d.color};">${d.id}</div>
-          <div class="grow"><div class="ex-name">${d.name}</div><div class="ex-scheme">${d.exercises.length} exercises · ${d.time}</div></div>
-          <div style="color:var(--faint); font-size:22px;">›</div>
-        </div>
-      </div>`;
-  }).join('') + '</div>';
+function workoutPickerHTML(excludeId) {
+  const list = state.workouts.filter(w => w.id !== excludeId);
+  if (!list.length) return '';
+  return '<div>' + list.map(w => `<div class="wk-item" onclick="startWorkout('${w.id}')">
+        <div class="wk-dot" style="background:${w.color};"></div>
+        <div class="grow"><div class="wk-name">${w.name || 'Untitled'}</div><div class="wk-meta">${w.exercises.length} exercises${w.muscles && w.muscles.length ? ' · ' + w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : ''}</div></div>
+        <div style="color:var(--faint); font-size:22px;">›</div>
+      </div>`).join('') + '</div>';
 }
 
 /* =========================================================
    SESSION (active workout)
    ========================================================= */
-function startWorkout(dayId) {
-  if (state.active && state.active.dayId !== dayId) {
-    if (!confirm('You have another workout in progress. Discard it and start ' + PROGRAM.days[dayId].name + '?')) return;
+function startWorkout(id) {
+  const wko = getWorkout(id);
+  if (!wko) return;
+  if (state.active && state.active.workoutId !== id) {
+    if (!confirm('You have another workout in progress. Discard it and start ' + wko.name + '?')) return;
   }
-  if (!state.active || state.active.dayId !== dayId) {
-    const day = PROGRAM.days[dayId];
+  if (!state.active || state.active.workoutId !== id) {
+    if (!wko.exercises.length) { alert('This workout has no exercises yet. Add some in Program.'); return; }
     const entries = {};
-    day.exercises.forEach(ex => {
-      const last = lastEntry(ex.key);
+    wko.exercises.forEach(ex => {
+      const key = exKeyOf(ex.name);
+      const last = lastEntry(key);
       const prefillW = last ? (bestTopSet(last.entry)?.weight || '') : '';
-      const prefillVar = last ? (last.entry.variant || 0) : 0;
-      const feederSets = Array.from({ length: feederCount(ex) }, () => ({ k: 'feeder', r: '', weight: '', reps: '', done: false }));
-      entries[ex.key] = {
-        variant: prefillVar,
-        sets: [...feederSets, ...ex.sets.map(s => ({ k: s.k, r: s.r, weight: state.settings.deload && prefillW ? deloadWeight(prefillW) : prefillW, reps: '', done: false }))],
-      };
+      const w = state.settings.deload && prefillW ? deloadWeight(prefillW) : prefillW;
+      const feeders = Array.from({ length: ex.feeders || 0 }, () => ({ k: 'feeder', r: '', weight: '', reps: '', done: false }));
+      entries[key] = { name: ex.name, note: ex.note || '', sets: [...feeders, ...ex.sets.map(s => ({ k: s.k, r: s.r, weight: w, reps: '', done: false }))] };
     });
-    state.active = { id: uid(), date: todayISO(), dayId, startedAt: Date.now(), entries, mobilityDone: [], deload: state.settings.deload };
+    state.active = { id: uid(), date: todayISO(), workoutId: id, workoutName: wko.name, color: wko.color, mobility: (wko.mobility || []).slice(), startedAt: Date.now(), entries, mobilityDone: [], deload: state.settings.deload };
     save();
   }
   showTab('today');
@@ -797,30 +1041,35 @@ function renderSession() {
   const el = document.getElementById('page-session');
   const s = state.active;
   if (!s) { showTab('today'); return; }
-  const day = PROGRAM.days[s.dayId];
+  const color = s.color || '#ff6a2b';
+  const entryList = Object.entries(s.entries);
 
-  const totalSets = Object.values(s.entries).reduce((a, e) => a + e.sets.length, 0);
-  const doneSets = Object.values(s.entries).reduce((a, e) => a + e.sets.filter(x => x.done).length, 0);
+  const totalSets = entryList.reduce((a, [, e]) => a + e.sets.length, 0);
+  const doneSets = entryList.reduce((a, [, e]) => a + e.sets.filter(x => x.done).length, 0);
   const pct = totalSets ? Math.round(doneSets / totalSets * 100) : 0;
 
   let html = `<div class="between" style="margin:2px 2px 12px;">
-      <div><h2 class="title" style="color:${day.color};">${day.name}</h2><div class="sub">${doneSets} / ${totalSets} sets done · ${elapsed(s.startedAt)}</div></div>
+      <div><h2 class="title" style="color:${color};">${s.workoutName || 'Workout'}</h2><div class="sub">${doneSets} / ${totalSets} sets done · ${elapsed(s.startedAt)}</div></div>
       <button class="icon-btn" onclick="confirmDiscard()">✕</button>
     </div>
-    <div class="pbar-bg mb"><div class="pbar-fill" style="width:${pct}%; background:${day.color};"></div></div>`;
+    <div class="pbar-bg mb"><div class="pbar-fill" style="width:${pct}%; background:${color};"></div></div>`;
 
   if (s.deload) html += `<div class="banner deload mb"><span class="bi">🔁</span><div><b>Deload session.</b> Targets shown are ~25% below your last top set.</div></div>`;
 
-  day.exercises.forEach((ex, i) => { html += exerciseCardHTML(ex, i, s.entries[ex.key], day.color); });
+  entryList.forEach(([key, entry], i) => { html += exerciseCardHTML(key, entry, i); });
 
   // Mobility
   html += `<div class="section-label">🧘 Post-Workout Mobility (5 min)</div><div class="card">`;
-  day.mobility.forEach((m, i) => {
-    const on = s.mobilityDone.includes(i);
-    html += `<div class="check-item ${on ? 'on' : ''}" onclick="toggleMobility(${i})">
-        <div class="check-box">✓</div><div class="check-label grow">${m}</div>
-      </div>`;
-  });
+  if (s.mobility && s.mobility.length) {
+    s.mobility.forEach((m, i) => {
+      const on = s.mobilityDone.includes(i);
+      html += `<div class="check-item ${on ? 'on' : ''}" onclick="toggleMobility(${i})">
+          <div class="check-box">✓</div><div class="check-label grow">${m}</div>
+        </div>`;
+    });
+  } else {
+    html += `<div class="muted" style="font-size:13.5px;">Stretch the muscles you trained for ~5 minutes to prevent shortening and keep mobility.</div>`;
+  }
   html += `</div>`;
 
   html += `<button class="btn btn-green btn-block btn-lg mt" onclick="finishWorkout()">Finish Workout ✓</button>`;
@@ -828,26 +1077,19 @@ function renderSession() {
   el.innerHTML = html;
 }
 
-function exerciseCardHTML(ex, idx, entry, color) {
+function exerciseCardHTML(key, entry, idx) {
   const allDone = entry.sets.length && entry.sets.every(x => x.done);
-  const last = lastEntry(ex.key);
-  const name = ex.variants[entry.variant] || ex.variants[0];
+  const last = lastEntry(key);
 
   let hint = '';
   if (last) {
     const t = bestTopSet(last.entry);
     if (t) {
-      const pb = allTimeBestE1RM(ex.key);
+      const pb = allTimeBestE1RM(key);
       const cur = e1rm(t.weight, t.reps);
       const isPB = cur >= pb - 0.01 && pb > 0;
       hint = `<div class="lasthint">↩️ <span>Last: <b>${fmtWeight(t.weight)} × ${num(t.reps)}</b> <span class="faint">(${last.session.date})</span></span>${isPB ? '<span class="pr">🏆 PR</span>' : ''}</div>`;
     }
-  }
-
-  let variantHTML = '';
-  if (ex.variants.length > 1) {
-    variantHTML = `<div class="variant-toggle">` + ex.variants.map((v, vi) =>
-      `<button class="${vi === entry.variant ? 'active' : ''}" onclick="setVariant('${ex.key}',${vi})">${v}</button>`).join('') + `</div>`;
   }
 
   let setsHTML = `<div class="set-head"><span>Set</span><span>Weight</span><span>Reps</span><span></span><span></span></div>`;
@@ -855,35 +1097,32 @@ function exerciseCardHTML(ex, idx, entry, color) {
     const kindLabel = st.k === 'top' ? 'Top' : st.k === 'backoff' ? 'Back-off' : 'Feeder';
     setsHTML += `<div class="set-row">
         <div class="kind ${st.k}">${kindLabel}<small>${st.r ? st.r + ' reps' : 'warm-up'}</small></div>
-        <div class="num-field"><input inputmode="decimal" placeholder="—" value="${st.weight}" onchange="setField('${ex.key}',${si},'weight',this.value)"><span class="unit">${unit()}</span></div>
-        <div class="num-field"><input inputmode="numeric" placeholder="—" value="${st.reps}" onchange="setField('${ex.key}',${si},'reps',this.value)"></div>
-        <button class="set-check ${st.done ? 'done' : ''}" onclick="toggleSet('${ex.key}',${si})">${st.done ? '✓' : ''}</button>
-        ${st.added ? `<button class="set-del" onclick="deleteSet('${ex.key}',${si})" aria-label="Remove set">✕</button>` : '<span></span>'}
+        <div class="num-field"><input inputmode="decimal" placeholder="—" value="${st.weight}" onchange="setField('${key}',${si},'weight',this.value)"><span class="unit">${unit()}</span></div>
+        <div class="num-field"><input inputmode="numeric" placeholder="—" value="${st.reps}" onchange="setField('${key}',${si},'reps',this.value)"></div>
+        <button class="set-check ${st.done ? 'done' : ''}" onclick="toggleSet('${key}',${si})">${st.done ? '✓' : ''}</button>
+        ${st.added ? `<button class="set-del" onclick="deleteSet('${key}',${si})" aria-label="Remove set">✕</button>` : '<span></span>'}
       </div>`;
   });
   setsHTML += `<div class="add-set-row">
-      <button class="add-set" onclick="addSet('${ex.key}','feeder')">+ Feeder</button>
-      <button class="add-set" onclick="addSet('${ex.key}','top')">+ Top</button>
+      <button class="add-set" onclick="addSet('${key}','feeder')">+ Feeder</button>
+      <button class="add-set" onclick="addSet('${key}','top')">+ Top</button>
     </div>`;
 
   return `<div class="ex">
       <div class="ex-head">
         <div class="ex-idx ${allDone ? 'done' : ''}">${allDone ? '✓' : idx + 1}</div>
         <div class="grow">
-          <div class="ex-name">${name}</div>
-          <div class="ex-scheme">${schemeText(ex)}</div>
-          ${ex.note ? `<div class="ex-note">↳ ${ex.note}</div>` : ''}
+          <div class="ex-name">${entry.name}</div>
+          <div class="ex-scheme">${schemeTextSets(entry.sets)}</div>
+          ${entry.note ? `<div class="ex-note">↳ ${entry.note}</div>` : ''}
         </div>
       </div>
       <div class="ex-body">
-        ${variantHTML}
         ${hint}
         ${setsHTML}
       </div>
     </div>`;
 }
-
-function setVariant(key, vi) { state.active.entries[key].variant = vi; save(); renderSession(); }
 function setField(key, si, field, val) { state.active.entries[key].sets[si][field] = val.trim(); save(); }
 function toggleSet(key, si) {
   const st = state.active.entries[key].sets[si];
@@ -992,81 +1231,189 @@ function beep() {
 /* =========================================================
    PROGRAM (reference)
    ========================================================= */
-function renderProgram() {
-  const el = document.getElementById('page-program');
-  let html = `<h2 class="title" style="margin:2px 2px;">The Program</h2><div class="sub" style="margin:0 2px 6px;">5-day split · train Mon / Tue / Thu / Fri</div>`;
+let editingWorkoutId = null;
+let pickerSearch = '';
 
+function renderProgram() {
+  if (editingWorkoutId) { renderWorkoutEditor(); return; }
+  let html = `<h2 class="title" style="margin:2px 2px;">Program</h2><div class="sub" style="margin:0 2px 6px;">Assign a workout to each day, and build your workouts below.</div>`;
+
+  // Schedule editor
+  const opts = wid => `<option value="">Rest</option>` + state.workouts.map(w => `<option value="${w.id}" ${wid === w.id ? 'selected' : ''}>${w.name || 'Untitled'}</option>`).join('');
   html += `<div class="section-label">Weekly Schedule</div><div class="card">`;
-  for (let d = 1; d <= 7; d++) {
-    const dow = d % 7; // 1..6,0
-    const sid = PROGRAM.schedule[dow];
-    const isRest = sid === 'rest';
-    const day = isRest ? null : PROGRAM.days[sid];
-    html += `<div class="between" style="padding:9px 0; border-bottom:1px solid var(--border);">
-        <span style="font-weight:700; width:100px; color:var(--muted);">${DAY_LABELS[dow]}</span>
-        ${isRest ? '<span class="muted">Rest</span>' : `<span class="row" style="gap:8px;"><span class="dot" style="width:9px;height:9px;border-radius:50%;background:${day.color};display:inline-block;"></span><b>${day.name}</b></span>`}
-      </div>`;
-  }
+  [1, 2, 3, 4, 5, 6, 0].forEach(dow => {
+    html += `<div class="sched-row"><span class="dl">${DAY_LABELS[dow]}</span><select onchange="setSchedule(${dow}, this.value)">${opts(state.schedule[dow] || '')}</select></div>`;
+  });
   html += `</div>`;
 
+  // Rules
   html += `<div class="section-label">Rules of Execution</div><div class="card">`;
   RULES.forEach(r => { html += `<div class="rule"><span class="ri">${r.i}</span><span class="rt"><b>${r.t}</b><span>${r.s}</span></span></div>`; });
   html += `</div>`;
 
-  DAY_ORDER.forEach(id => {
-    const d = PROGRAM.days[id];
-    html += `<div class="section-label" style="color:${d.color};">Day ${d.id} · ${d.name}</div><div class="card">`;
-    d.exercises.forEach((ex, i) => {
-      html += `<div style="padding:11px 0; border-bottom:1px solid var(--border);">
-          <div class="row" style="gap:10px; align-items:flex-start;">
-            <div class="ex-idx" style="background:${d.color}22;color:${d.color};">${i + 1}</div>
-            <div class="grow">
-              <div style="font-weight:800;">${ex.variants.join(' <span class="faint">or</span> ')}</div>
-              <div class="ex-scheme">${schemeText(ex)}</div>
-              ${ex.note ? `<div class="ex-note">↳ ${ex.note}</div>` : ''}
-            </div>
-          </div>
+  // My workouts
+  html += `<div class="between" style="margin:22px 2px 10px;"><span class="section-label" style="margin:0;">My Workouts</span><button class="btn btn-primary btn-sm" onclick="newWorkout()">+ New</button></div>`;
+  if (!state.workouts.length) {
+    html += `<div class="empty"><div class="big">📋</div>No workouts yet. Tap “+ New” to build one.</div>`;
+  } else {
+    state.workouts.forEach(w => {
+      html += `<div class="wk-item" onclick="editWorkout('${w.id}')">
+          <div class="wk-dot" style="background:${w.color};"></div>
+          <div class="grow"><div class="wk-name">${w.name || 'Untitled'}</div><div class="wk-meta">${w.exercises.length} exercises${w.muscles && w.muscles.length ? ' · ' + w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : ''}</div></div>
+          <div style="color:var(--faint); font-size:22px;">›</div>
         </div>`;
     });
-    html += `<div class="rule" style="border:none; padding-top:12px;"><span class="ri">🧘</span><span class="rt"><b>Mobility</b><span>${d.mobility.join(' · ')}</span></span></div>`;
-    html += `</div>`;
-  });
-  el.innerHTML = html;
+  }
+  document.getElementById('page-program').innerHTML = html;
+}
+
+function setSchedule(dow, val) { state.schedule[dow] = val || null; save(); }
+
+/* --- Workout CRUD --- */
+function newWorkout() {
+  const w = { id: uid(), name: '', color: WK_COLORS[state.workouts.length % WK_COLORS.length], muscles: [], mobility: [], exercises: [] };
+  state.workouts.push(w); editingWorkoutId = w.id; save(); renderProgram();
+}
+function editWorkout(id) { editingWorkoutId = id; renderProgram(); }
+function closeEditor() { editingWorkoutId = null; save(); renderProgram(); }
+function deleteWorkout(id) {
+  if (!confirm('Delete this workout? (Your logged history is kept.)')) return;
+  state.workouts = state.workouts.filter(w => w.id !== id);
+  for (const k of Object.keys(state.schedule)) if (state.schedule[k] === id) state.schedule[k] = null;
+  editingWorkoutId = null; save(); renderProgram();
+}
+function setWorkoutName(id, val) { const w = getWorkout(id); if (w) { w.name = val; save(); } }
+function setWorkoutColor(id, c) { const w = getWorkout(id); if (w) { w.color = c; save(); renderProgram(); } }
+function toggleWorkoutMuscle(id, m) {
+  const w = getWorkout(id); if (!w) return;
+  const i = w.muscles.indexOf(m);
+  if (i >= 0) w.muscles.splice(i, 1); else w.muscles.push(m);
+  save(); renderProgram();
+}
+function moveExercise(id, idx, dir) {
+  const w = getWorkout(id); if (!w) return;
+  const j = idx + dir; if (j < 0 || j >= w.exercises.length) return;
+  const [x] = w.exercises.splice(idx, 1); w.exercises.splice(j, 0, x);
+  save(); renderProgram();
+}
+function removeExercise(id, idx) { const w = getWorkout(id); if (!w) return; w.exercises.splice(idx, 1); save(); renderProgram(); }
+
+function renderWorkoutEditor() {
+  const w = getWorkout(editingWorkoutId);
+  if (!w) { editingWorkoutId = null; renderProgram(); return; }
+  let html = `<div class="between" style="margin:2px 2px 14px;">
+      <button class="btn btn-ghost btn-sm" onclick="closeEditor()">‹ Done</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteWorkout('${w.id}')">Delete</button>
+    </div>`;
+
+  html += `<div class="field" style="margin-top:0;"><label>Workout name</label>
+      <input type="text" placeholder="e.g. Chest & Biceps" value="${(w.name || '').replace(/"/g, '&quot;')}" oninput="setWorkoutName('${w.id}', this.value)"></div>`;
+
+  html += `<div class="field"><label>Colour</label><div class="swatch-row">` +
+    WK_COLORS.map(c => `<div class="swatch ${w.color === c ? 'on' : ''}" style="background:${c}" onclick="setWorkoutColor('${w.id}','${c}')"></div>`).join('') + `</div></div>`;
+
+  html += `<div class="field"><label>Muscle groups worked</label><div class="chip-wrap">` +
+    MUSCLE.map(m => `<button class="chip ${w.muscles.includes(m) ? 'on' : ''}" onclick="toggleWorkoutMuscle('${w.id}','${m}')">${MUSCLE_LABEL[m]}</button>`).join('') + `</div></div>`;
+
+  html += `<div class="between" style="margin:22px 2px 10px;"><span class="section-label" style="margin:0;">Exercises</span><button class="btn btn-primary btn-sm" onclick="openExercisePicker('${w.id}')">+ Add</button></div>`;
+  html += `<div class="card">`;
+  if (!w.exercises.length) {
+    html += `<div class="muted" style="font-size:13.5px; padding:6px 0;">No exercises yet. Tap “+ Add” to pick from the library${w.muscles.length ? '' : ' (choose muscle groups above to pre-filter it)'}.</div>`;
+  } else {
+    w.exercises.forEach((ex, i) => {
+      html += `<div class="ed-ex">
+          <div class="reorder"><button onclick="moveExercise('${w.id}',${i},-1)">▲</button><button onclick="moveExercise('${w.id}',${i},1)">▼</button></div>
+          <div class="grow"><div class="exn">${ex.name}</div><div class="exs">${schemeText(ex.feeders, ex.sets)}</div></div>
+          <button class="ed-del" onclick="removeExercise('${w.id}',${i})" aria-label="Remove">✕</button>
+        </div>`;
+    });
+  }
+  html += `</div>`;
+  document.getElementById('page-program').innerHTML = html;
+}
+
+/* --- Exercise picker (bottom sheet), filtered by muscle groups + equipment --- */
+function openExercisePicker(id) { editingWorkoutId = id; pickerSearch = ''; renderPicker(); }
+function renderPicker() {
+  const w = getWorkout(editingWorkoutId);
+  if (!w) return;
+  const chosen = new Set(w.exercises.map(x => exKeyOf(x.name)));
+  let list = EXERCISE_LIB.filter(exAvailable);
+  if (w.muscles.length) list = list.filter(x => x.m.some(m => w.muscles.includes(m)));
+  const q = pickerSearch.trim().toLowerCase();
+  if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
+
+  const groups = {};
+  list.forEach(x => { const g = x.m[0]; (groups[g] = groups[g] || []).push(x); });
+
+  let body = `<h3>Add exercises</h3><div class="sub mb">${w.muscles.length ? w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : 'All muscles'} · filtered to your equipment</div>
+    <input class="pick-search" placeholder="Search exercises…" value="${pickerSearch.replace(/"/g, '&quot;')}" oninput="pickerSearch=this.value; renderPicker();">`;
+  if (!list.length) {
+    body += `<div class="empty" style="padding:24px;">No matching exercises. Try other muscle groups, or add equipment in Settings.</div>`;
+  } else {
+    MUSCLE.forEach(mg => {
+      if (!groups[mg]) return;
+      body += `<div class="pick-group">${MUSCLE_LABEL[mg]}</div>`;
+      groups[mg].forEach(x => {
+        const on = chosen.has(exKeyOf(x.n));
+        const tags = x.e.map(e => EQUIP_TAG[e]).join(' / ');
+        body += `<div class="pick-item ${on ? 'on' : ''}" onclick="pickerToggle(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)">
+            <div class="grow"><div class="pn">${x.n}</div><div class="tag">${tags}</div></div>
+            <div class="pick-check">✓</div>
+          </div>`;
+      });
+    });
+  }
+  body += `<button class="btn btn-primary btn-block mt" onclick="closeSheet(); renderProgram();">Done</button>`;
+  openSheet(body);
+}
+function pickerToggle(name) {
+  const w = getWorkout(editingWorkoutId); if (!w) return;
+  const key = exKeyOf(name);
+  const idx = w.exercises.findIndex(x => exKeyOf(x.name) === key);
+  if (idx >= 0) { w.exercises.splice(idx, 1); }
+  else {
+    const lib = findLib(name); if (!lib) return;
+    const sch = defaultScheme(lib.t);
+    w.exercises.push({ id: uid(), name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t, feeders: sch.feeders, sets: sch.sets, note: '' });
+    if (!w.muscles.length) w.muscles = lib.m.slice();
+  }
+  save(); renderPicker();
 }
 
 /* =========================================================
    PROGRESS
    ========================================================= */
-let progressKey = 'd1e1';
+let progressKey = null;
 function renderProgress() {
   const el = document.getElementById('page-progress');
   const totalWorkouts = state.history.length;
   const thisWeek = state.history.filter(s => { const d = new Date(s.date + 'T00:00:00'); return (Date.now() - d) < 7 * 864e5; }).length;
   const streak = computeStreak();
+  const perWeek = Math.max(1, trainingDaysCount());
 
   let html = `<h2 class="title" style="margin:2px 2px 12px;">Progress</h2>`;
   html += `<div class="stat-grid mb">
       <div class="stat"><div class="v">${totalWorkouts}</div><div class="l">Workouts</div></div>
-      <div class="stat"><div class="v">${thisWeek}<span style="font-size:15px;color:var(--muted)">/4</span></div><div class="l">This week</div></div>
+      <div class="stat"><div class="v">${thisWeek}<span style="font-size:15px;color:var(--muted)">/${perWeek}</span></div><div class="l">This week</div></div>
       <div class="stat"><div class="v">${streak}</div><div class="l">Week streak</div></div>
     </div>`;
 
-  if (!totalWorkouts) {
-    html += `<div class="empty"><div class="big">📈</div>Log a workout to see your strength trends here.</div>`;
+  // Build the exercise list from history + current workouts (name-keyed)
+  const exMap = {};
+  state.workouts.forEach(w => w.exercises.forEach(ex => { exMap[exKeyOf(ex.name)] = ex.name; }));
+  state.history.forEach(s => Object.entries(s.entries || {}).forEach(([k, en]) => { exMap[k] = en.name || exMap[k] || k; }));
+  const keys = Object.keys(exMap).sort((a, b) => exMap[a].localeCompare(exMap[b]));
+
+  if (!keys.length) {
+    html += `<div class="empty"><div class="big">📈</div>Add exercises to a workout and log a session to see strength trends.</div>`;
     el.innerHTML = html; return;
   }
+  if (!progressKey || !exMap[progressKey]) progressKey = keys[0];
 
-  // Exercise picker
-  let opts = '';
-  DAY_ORDER.forEach(id => {
-    const d = PROGRAM.days[id];
-    opts += `<optgroup label="Day ${d.id} · ${d.name}">`;
-    d.exercises.forEach(ex => { opts += `<option value="${ex.key}" ${ex.key === progressKey ? 'selected' : ''}>${ex.variants[0]}</option>`; });
-    opts += `</optgroup>`;
-  });
-  html += `<select class="big mb" onchange="progressKey=this.value; renderProgress();">${opts}</select>`;
+  html += `<select class="big mb" onchange="progressKey=this.value; renderProgress();">` +
+    keys.map(k => `<option value="${k}" ${k === progressKey ? 'selected' : ''}>${exMap[k]}</option>`).join('') + `</select>`;
 
-  const ex = findExercise(progressKey);
   const series = state.history
     .filter(s => s.entries && s.entries[progressKey])
     .map(s => { const t = bestTopSet(s.entries[progressKey]); return t ? { date: s.date, weight: num(t.weight), reps: num(t.reps), e1rm: e1rm(t.weight, t.reps) } : null; })
@@ -1074,17 +1421,16 @@ function renderProgress() {
     .sort((a, b) => a.date.localeCompare(b.date));
 
   if (!series.length) {
-    html += `<div class="empty"><div class="big">🗒️</div>No logged sets for <b>${ex.variants[0]}</b> yet.</div>`;
+    html += `<div class="empty"><div class="big">🗒️</div>No logged sets for <b>${exMap[progressKey]}</b> yet.</div>`;
     el.innerHTML = html; return;
   }
 
   const bestW = Math.max(...series.map(p => p.weight));
-  const bestE = Math.max(...series.map(p => p.e1rm));
   const first = series[0], lastP = series[series.length - 1];
   const delta = lastP.e1rm - first.e1rm;
 
   html += `<div class="card">
-      <div class="between mb"><b>${ex.variants[0]}</b><span class="pill" style="color:var(--accent);background:var(--surface2);">🏆 ${fmtWeight(bestW)}</span></div>
+      <div class="between mb"><b>${exMap[progressKey]}</b><span class="pill" style="color:var(--accent);background:var(--surface2);">🏆 ${fmtWeight(bestW)}</span></div>
       <canvas id="prog-chart" height="200"></canvas>
       <div class="between mt" style="font-size:13px;">
         <span class="muted">Est. 1RM trend</span>
@@ -1102,7 +1448,7 @@ function renderProgress() {
   html += `</div>`;
   el.innerHTML = html;
 
-  drawLineChart('prog-chart', series.map(p => ({ x: p.date, y: p.e1rm })), findExercise(progressKey));
+  drawLineChart('prog-chart', series.map(p => ({ x: p.date, y: p.e1rm })), null);
 }
 
 function computeStreak() {
@@ -1200,15 +1546,16 @@ function renderHistory() {
   }
   const sorted = [...state.history].sort((a, b) => b.date.localeCompare(a.date) || (b.finishedAt || 0) - (a.finishedAt || 0));
   sorted.forEach(s => {
-    const day = PROGRAM.days[s.dayId];
+    const color = s.color || '#ff6a2b';
+    const name = s.workoutName || 'Workout';
     const dateStr = new Date(s.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-    const summary = day.exercises.map(ex => {
-      const t = bestTopSet(s.entries[ex.key]);
-      return t ? `${ex.variants[s.entries[ex.key].variant || 0].split(' ')[0]} ${fmtWeight(t.weight)}×${num(t.reps)}` : null;
+    const summary = Object.values(s.entries || {}).map(en => {
+      const t = bestTopSet(en);
+      return t ? `${(en.name || '').split(' ')[0]} ${fmtWeight(t.weight)}×${num(t.reps)}` : null;
     }).filter(Boolean).slice(0, 4).join('  ·  ');
     html += `<div class="hist-item" onclick="openSessionDetail('${s.id}')">
         <div class="between">
-          <div><div class="hist-date">${dateStr}${s.deload ? ' · deload' : ''}</div><div class="hist-day" style="color:${day.color};">${day.name}</div></div>
+          <div><div class="hist-date">${dateStr}${s.deload ? ' · deload' : ''}</div><div class="hist-day" style="color:${color};">${name}</div></div>
           <div style="color:var(--faint); font-size:22px;">›</div>
         </div>
         ${summary ? `<div class="hist-summary">${summary}</div>` : ''}
@@ -1219,16 +1566,17 @@ function renderHistory() {
 function openSessionDetail(id) {
   const s = state.history.find(x => x.id === id);
   if (!s) return;
-  const day = PROGRAM.days[s.dayId];
+  const color = s.color || '#ff6a2b';
   const dateStr = new Date(s.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
-  let html = `<h3 style="color:${day.color};">${day.name}</h3><div class="sub mb">${dateStr}</div>`;
-  day.exercises.forEach(ex => {
-    const en = s.entries[ex.key];
-    if (!en || !en.sets.length) return;
-    html += `<div style="margin-top:14px;"><b>${ex.variants[en.variant || 0]}</b></div>`;
+  let html = `<h3 style="color:${color};">${s.workoutName || 'Workout'}</h3><div class="sub mb">${dateStr}</div>`;
+  Object.values(s.entries || {}).forEach(en => {
+    if (!en.sets || !en.sets.length) return;
+    const logged = en.sets.some(st => num(st.weight) || num(st.reps));
+    if (!logged) return;
+    html += `<div style="margin-top:14px;"><b>${en.name}</b></div>`;
     en.sets.forEach(st => {
       if (!num(st.weight) && !num(st.reps)) return;
-      const lbl = st.k === 'top' ? 'Top' : st.k === 'backoff' ? 'Back-off' : 'Set';
+      const lbl = st.k === 'top' ? 'Top' : st.k === 'backoff' ? 'Back-off' : 'Feeder';
       html += `<div class="between" style="padding:6px 0; border-bottom:1px solid var(--border); font-size:14px;">
           <span class="kind ${st.k}" style="font-size:12px;">${lbl}</span>
           <span><b>${st.weight ? fmtWeight(st.weight) : '—'}</b> × ${st.reps || '—'}</span>
@@ -1249,6 +1597,7 @@ function deleteSession(id) {
    ========================================================= */
 function openSettings() {
   const st = state.settings;
+  const own = ownedEquip();
   let html = `<h3>Settings</h3><div class="sub mb">Program week ${weekNumber()}${deloadSuggested() ? ' · deload due' : ''}</div>
 
     <div class="field"><label>Weight unit</label>
@@ -1269,6 +1618,10 @@ function openSettings() {
     </div>
     <button class="btn btn-primary btn-block mt" onclick="saveSettings()">Save</button>
 
+    <div class="section-label">Available equipment</div>
+    <div class="chip-wrap">${EQUIP.map(eq => `<button class="chip ${own.includes(eq.k) ? 'on' : ''}" onclick="toggleEquip('${eq.k}', this)">${eq.label}</button>`).join('')}</div>
+    <p class="faint" style="font-size:12px; margin-top:10px; line-height:1.5;">Filters the exercise picker. <b>Gym</b> = everything available. Otherwise it only shows moves you can do with the selected gear (bodyweight is always included).</p>
+
     <div class="section-label">Data</div>
     <button class="btn btn-outline btn-block mt-s" onclick="exportData()">⬇︎ Export backup (.json)</button>
     <label class="btn btn-outline btn-block mt-s" style="text-align:center;">⬆︎ Import backup
@@ -1284,6 +1637,14 @@ function saveSettings() {
   state.settings.startDate = document.getElementById('set-start').value || todayISO();
   state.settings.deload = document.getElementById('set-deload').checked;
   save(); closeSheet(); renderAll(); toast('Settings saved');
+}
+function toggleEquip(key, btn) {
+  let e = state.settings.equipment; if (!Array.isArray(e)) e = ['gym'];
+  const i = e.indexOf(key);
+  if (i >= 0) e.splice(i, 1); else e.push(key);
+  if (!e.length) e.push('gym');
+  state.settings.equipment = e; save();
+  if (btn) btn.classList.toggle('on');
 }
 /* =========================================================
    SHEET / TOAST helpers
