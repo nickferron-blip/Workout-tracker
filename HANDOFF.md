@@ -50,46 +50,59 @@ This Mac has **only `git`** (no gh/gcloud/node/brew). It still works because:
   `{"source":{"branch":"main","path":"/"}}`. Never print/store that token.
 
 To ship: edit `index.html` → `git push`. Pages redeploys in ~1–2 min. **Bump the
-`CACHE` version in `sw.js`** (currently `workout-tracker-v3`) whenever you change
+`CACHE` version in `sw.js`** (currently `workout-tracker-v6`) whenever you change
 `index.html`, or returning clients get the old cached shell. User hard-refreshes
 (or reopens the PWA). **Drive data is never touched by app updates.**
 
 Privacy: `.gitignore` excludes `workout-data*.json` — never commit personal data.
 
-## The program (source of truth = the user's "Rules of Execution" doc)
-Schedule: Mon=Day1, Tue=Day2, Wed=rest, Thu=Day4, Fri=Day5, Sat/Sun=rest
-(`PROGRAM.schedule`, keyed by JS `getDay()`).
-- **Day 1 — Chest & Biceps** (incline press, flat press/dips, flyes/crossovers, EZ/DB curl, incline/preacher curl)
-- **Day 2 — Legs** (ham curl, hack/leg press, leg ext, RDL/hyperext, calf raise)
-- **Day 4 — Shoulders & Triceps** (OHP, lateral raise ×2, rear delt ×2, pushdown, overhead ext)
-- **Day 5 — Back & Traps** (chest-supported row, pulldown, single-arm row, shrugs ×2)
+## Model — user-editable workouts (v2)
+The app is data-driven. The original hardcoded `PROGRAM` (from the user's "Rules
+of Execution" doc: Chest&Biceps / Legs / Shoulders&Triceps / Back&Traps, trained
+Mon/Tue/Thu/Fri) is now **only a seed source** used by `seedWorkouts()` +
+`_migrateV2()` on first load. Everything the user sees is editable data:
+- **Workouts** they build (name, colour, muscle groups, ordered exercises).
+- **Schedule** they assign (weekday → workoutId | null) in the Program tab.
+- **Equipment** they own (Settings) — filters the exercise picker.
 
-Each exercise: `{ key, variants[], feeders, note?, sub?, sets:[{k:'top'|'backoff', r:'6–8'}] }`.
-`key` (e.g. `d1e1`) is stable across variant choice → used for history &
-progression. Rules of execution + per-day mobility are shown on the Program tab.
+`EXERCISE_LIB` (~95 exercises) each `{ n, m:[muscle], e:[equip], t:'c'|'i' }`.
+Equipment codes: `db bb sm sq ca` (user-toggleable) · `ma` fixed/plate machine
+(needs `gym`) · `bw` bodyweight (always available). `exAvailable()` gates the
+picker; `gym` = everything. Adding an exercise gives it a `defaultScheme(type)`
+(compound → 1 feeder + top 6–8 + back-off 8–10; isolation → 1 feeder + top 10–12).
+
+Progression key = **slug of the exercise name** (`exKeyOf`), so it's continuous
+across workouts/edits. `_migrateV2()` re-keys old `d1e1`+`variant` history entries
+to name slugs and stamps each session with `workoutId/workoutName/color`.
 
 ## Data model (`state`)
 ```
 state = {
-  active: session | null,        // in-progress workout
-  history: [ session, ... ],     // completed
-  settings: { unit:'lb'|'kg', restSeconds:165, startDate:'YYYY-MM-DD', deload:bool }
+  active: session | null,
+  history: [ session ],
+  workouts: [ { id, name, color, muscles:[key], mobility:[str],
+                exercises:[ { id, name, muscles:[], equip:[], type:'c'|'i',
+                              feeders:int, sets:[{k:'top'|'backoff', r}], note } ] } ],
+  schedule: { 0..6 : workoutId | null },        // JS getDay()
+  settings: { unit, restSeconds, startDate, deload, equipment:['gym'|'db'|...] }
 }
 session = {
-  id, date:'YYYY-MM-DD', dayId, startedAt, finishedAt, deload:bool,
-  entries: { [exKey]: { variant:int, sets:[ {k, r, weight, reps, done} ] } },
-  mobilityDone: [ indices ]
+  id, date, workoutId, workoutName, color, startedAt, finishedAt, deload,
+  mobility:[str], mobilityDone:[i],
+  entries: { [exKeyOf(name)]: { name, note, sets:[ {k, r, weight, reps, done, added?} ] } }
 }
 ```
-- Tabs: **Today** (auto-picks scheduled day; shows session view when `active`),
-  **Program**, **Progress**, **History**. Settings via header gear (bottom sheet).
-- Features: rest timer (ring + beep + vibrate, auto-starts when a set is checked),
-  "last time" progressive-overload hint + PR badge, estimated 1RM (Epley:
-  `w*(1+reps/30)`) trend chart per exercise, week counter + deload nudge
-  (weeks 5–6) + deload mode (−25% targets), mobility checklist, JSON export/import.
+- Tabs: **Today** (uses `scheduledWorkoutId()`; session view when `active`),
+  **Program** (schedule editor + rules + workout builder + exercise picker),
+  **Progress**, **History**. Settings via header gear (bottom sheet).
+- Feeder sets are seeded from `ex.feeders`; during a session `addSet(key,'feeder'|'top')`
+  inserts in `KIND_ORDER` (feeder→top→back-off) and only `added:true` sets get a ✕.
+- Features: rest timer (ring + beep + vibrate, auto-starts on set-check),
+  "last time" overload hint + PR badge, e1RM (Epley `w*(1+reps/30)`) trend chart,
+  week counter + deload nudge (weeks 5–6) + deload mode (−25%), JSON export/import.
 
 ## Status / open items
-- **Done & live.** User has signed in and it syncs. No outstanding bugs known.
-- Possible future work (none requested yet): weekly volume/tonnage summary,
-  bodyweight log, plate-math helper, auto-detect deload from week counter,
-  per-set RPE/notes, editing a past workout from History.
+- **Done & live.** Editable workouts/schedule/equipment shipped and verified.
+- Possible future work (none requested): per-exercise rep-scheme editing in the
+  builder, weekly volume/tonnage summary, bodyweight log, plate-math helper,
+  editing a past workout from History, custom exercises not in the library.
