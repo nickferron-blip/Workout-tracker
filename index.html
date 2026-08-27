@@ -406,7 +406,10 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 // Web OAuth Client ID — dedicated Google Cloud project for the Workout Tracker.
 // Authorized JavaScript origin: https://nickferron-blip.github.io
 const CLIENT_ID = '491987759955-krrij8805jdthf928dnqqkkr3dgirs0t.apps.googleusercontent.com';
-const SCOPES = 'https://www.googleapis.com/auth/drive';
+// drive.file = per-file access: the app can only see/manage files it created
+// itself (our workout-data.json). It never sees the rest of your Drive. This is
+// enough for single-user cross-device sync (no file sharing like the finance app).
+const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 const FILE_NAME = 'workout-data.json';
 
 let _accessToken = null, _driveFileId = null, _grantedScopes = '', _saveTimer = null, _db = null;
@@ -475,7 +478,7 @@ async function _createVisibleFile(obj) {
   if (!res.ok) throw new Error('create failed (' + res.status + '): ' + (await res.text()).slice(0, 200));
   return (await res.json()).id;
 }
-function _hasDriveWriteScope() { return (_grantedScopes || '').split(/\s+/).includes('https://www.googleapis.com/auth/drive'); }
+function _hasDriveWriteScope() { const s = (_grantedScopes || '').split(/\s+/); return s.includes('https://www.googleapis.com/auth/drive.file') || s.includes('https://www.googleapis.com/auth/drive'); }
 
 async function _loadFromDrive() {
   const id = await _findVisibleFile();
@@ -519,7 +522,7 @@ async function signIn() {
       if (r.error) return;
       _accessToken = r.access_token; _grantedScopes = r.scope || '';
       if (!_hasDriveWriteScope()) {
-        alert('Google didn\'t grant Drive access.\n\nIn Google Cloud Console → OAuth consent screen → Data Access, add the ".../auth/drive" scope, then sign in again.');
+        alert('Google didn\'t grant Drive access.\n\nIn Google Cloud Console → OAuth consent → Data Access, add the ".../auth/drive.file" scope, then sign in again.');
         return;
       }
       _updateAuthUI(true);
