@@ -16,9 +16,9 @@
 <style>
   :root {
     --bg: #0b0e14;
-    --surface: #151a24;
-    --surface2: #1c2431;
-    --surface3: #263041;
+    --surface: #1d232f;
+    --surface2: #242d3c;
+    --surface3: #2e394c;
     --border: #2a3342;
     --text: #eef2f8;
     --muted: #8a94a6;
@@ -147,7 +147,7 @@
   .lasthint .pr { color: var(--yellow); font-weight: 800; }
 
   /* Set rows */
-  .set-row { display: grid; grid-template-columns: 74px 1fr 1fr 46px; gap: 8px; align-items: center; margin-bottom: 9px; }
+  .set-row { display: grid; grid-template-columns: 74px 1fr 1fr 46px 22px; gap: 8px; align-items: center; margin-bottom: 9px; }
   .set-row .kind { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }
   .set-row .kind small { display: block; color: var(--faint); font-weight: 600; font-size: 10px; letter-spacing: 0; text-transform: none; }
   .kind.top { color: var(--accent); } .kind.backoff { color: var(--blue); } .kind.feeder { color: var(--faint); }
@@ -157,9 +157,12 @@
   .num-field .unit { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); font-size: 11px; color: var(--faint); font-weight: 700; pointer-events: none; }
   .set-check { width: 46px; height: 46px; border-radius: 12px; border: 2px solid var(--border); background: var(--surface2); color: var(--faint); font-size: 20px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
   .set-check.done { background: var(--green); border-color: var(--green); color: #05230f; }
-  .set-head { display: grid; grid-template-columns: 74px 1fr 1fr 46px; gap: 8px; margin-bottom: 6px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); text-align: center; }
+  .set-del { width: 22px; height: 46px; background: none; border: none; color: var(--faint); font-size: 15px; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .set-del:active { color: var(--red); }
+  .set-head { display: grid; grid-template-columns: 74px 1fr 1fr 46px 22px; gap: 8px; margin-bottom: 6px; font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); text-align: center; }
   .set-head span:first-child { text-align: left; }
-  .add-set { background: none; border: 1px dashed var(--border); color: var(--muted); width: 100%; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 2px; }
+  .add-set { background: none; border: 1px dashed var(--border); color: var(--muted); flex: 1; padding: 10px; border-radius: 10px; font-size: 13px; font-weight: 700; cursor: pointer; margin-top: 2px; }
+  .add-set-row { display: flex; gap: 8px; }
 
   /* Mobility checklist */
   .check-item { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
@@ -629,6 +632,13 @@ function findExercise(key) {
   for (const d of Object.values(PROGRAM.days)) { const e = d.exercises.find(x => x.key === key); if (e) return e; }
   return null;
 }
+/* How many feeder (ramp-up) sets an exercise prescribes, parsed from e.g. "1–2 feeders" */
+function feederCount(ex) {
+  if (!ex.feeders) return 0;
+  const m = ex.feeders.match(/(\d+)/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+const KIND_ORDER = { feeder: 0, top: 1, backoff: 2 };
 
 /* Last-time lookup for an exercise (most recent completed session with a logged working set) */
 function lastEntry(key) {
@@ -770,9 +780,10 @@ function startWorkout(dayId) {
       const last = lastEntry(ex.key);
       const prefillW = last ? (bestTopSet(last.entry)?.weight || '') : '';
       const prefillVar = last ? (last.entry.variant || 0) : 0;
+      const feederSets = Array.from({ length: feederCount(ex) }, () => ({ k: 'feeder', r: '', weight: '', reps: '', done: false }));
       entries[ex.key] = {
         variant: prefillVar,
-        sets: ex.sets.map(s => ({ k: s.k, r: s.r, weight: state.settings.deload && prefillW ? deloadWeight(prefillW) : prefillW, reps: '', done: false })),
+        sets: [...feederSets, ...ex.sets.map(s => ({ k: s.k, r: s.r, weight: state.settings.deload && prefillW ? deloadWeight(prefillW) : prefillW, reps: '', done: false }))],
       };
     });
     state.active = { id: uid(), date: todayISO(), dayId, startedAt: Date.now(), entries, mobilityDone: [], deload: state.settings.deload };
@@ -839,7 +850,7 @@ function exerciseCardHTML(ex, idx, entry, color) {
       `<button class="${vi === entry.variant ? 'active' : ''}" onclick="setVariant('${ex.key}',${vi})">${v}</button>`).join('') + `</div>`;
   }
 
-  let setsHTML = `<div class="set-head"><span>Set</span><span>Weight</span><span>Reps</span><span></span></div>`;
+  let setsHTML = `<div class="set-head"><span>Set</span><span>Weight</span><span>Reps</span><span></span><span></span></div>`;
   entry.sets.forEach((st, si) => {
     const kindLabel = st.k === 'top' ? 'Top' : st.k === 'backoff' ? 'Back-off' : 'Feeder';
     setsHTML += `<div class="set-row">
@@ -847,9 +858,13 @@ function exerciseCardHTML(ex, idx, entry, color) {
         <div class="num-field"><input inputmode="decimal" placeholder="—" value="${st.weight}" onchange="setField('${ex.key}',${si},'weight',this.value)"><span class="unit">${unit()}</span></div>
         <div class="num-field"><input inputmode="numeric" placeholder="—" value="${st.reps}" onchange="setField('${ex.key}',${si},'reps',this.value)"></div>
         <button class="set-check ${st.done ? 'done' : ''}" onclick="toggleSet('${ex.key}',${si})">${st.done ? '✓' : ''}</button>
+        ${st.added ? `<button class="set-del" onclick="deleteSet('${ex.key}',${si})" aria-label="Remove set">✕</button>` : '<span></span>'}
       </div>`;
   });
-  setsHTML += `<button class="add-set" onclick="addSet('${ex.key}')">+ Add set</button>`;
+  setsHTML += `<div class="add-set-row">
+      <button class="add-set" onclick="addSet('${ex.key}','feeder')">+ Feeder</button>
+      <button class="add-set" onclick="addSet('${ex.key}','top')">+ Top</button>
+    </div>`;
 
   return `<div class="ex">
       <div class="ex-head">
@@ -877,8 +892,20 @@ function toggleSet(key, si) {
   renderSession();
   if (st.done) { startRestTimer(); if (navigator.vibrate) navigator.vibrate(15); }
 }
-function addSet(key) {
-  state.active.entries[key].sets.push({ k: 'top', r: '', weight: '', reps: '', done: false });
+function addSet(key, kind) {
+  const sets = state.active.entries[key].sets;
+  const rank = KIND_ORDER[kind];
+  let insertAt = sets.length;
+  for (let i = 0; i < sets.length; i++) {
+    if (KIND_ORDER[sets[i].k] > rank) { insertAt = i; break; }
+  }
+  sets.splice(insertAt, 0, { k: kind, r: '', weight: '', reps: '', done: false, added: true });
+  save(); renderSession();
+}
+function deleteSet(key, si) {
+  const sets = state.active.entries[key].sets;
+  if (!sets[si] || !sets[si].added) return;
+  sets.splice(si, 1);
   save(); renderSession();
 }
 function toggleMobility(i) {
