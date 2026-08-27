@@ -403,10 +403,9 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
    (same model as the Finance Tracker: sign in with Google, keep one JSON
     file in your Drive, cached locally in IndexedDB for instant/offline load)
    ========================================================= */
-// Web OAuth Client ID. GitHub Pages serves every repo of one account from the
-// SAME origin (https://<user>.github.io), so the finance app's existing Client
-// ID already authorizes this app. Replace with your own to host elsewhere.
-const CLIENT_ID = '168405386494-tl577olfbs8sjln89q5rm97jn3euimi7.apps.googleusercontent.com';
+// Web OAuth Client ID — dedicated Google Cloud project for the Workout Tracker.
+// Authorized JavaScript origin: https://nickferron-blip.github.io
+const CLIENT_ID = '491987759955-krrij8805jdthf928dnqqkkr3dgirs0t.apps.googleusercontent.com';
 const SCOPES = 'https://www.googleapis.com/auth/drive';
 const FILE_NAME = 'workout-data.json';
 
