@@ -712,22 +712,28 @@ function _migrateV2() {
     s.entries = ne;
   });
   if (state.active && !state.active.workoutId) state.active = null; // drop old-format in-progress session
-  // One-time: restore the original A/B alternate options on the seeded workouts.
-  if (!state.altsSeeded) {
+  // Variations: normalise a legacy single `alt` -> an `alts` array on every
+  // exercise, then (once) restore the full original variation set on the seeds.
+  state.workouts.forEach(w => w.exercises.forEach(ex => {
+    if (!Array.isArray(ex.alts)) ex.alts = ex.alt ? [ex.alt] : [];
+    delete ex.alt;
+  }));
+  if (!state.variationsSeeded) {
     state.workouts.forEach(w => {
       if (!String(w.id).startsWith('seed-')) return;
       const day = PROGRAM.days[Number(String(w.id).slice(5))];
       if (!day) return;
       w.exercises.forEach(ex => {
-        if (ex.alt) return;
         const dex = day.exercises.find(x => x.variants[0] === ex.name);
-        if (dex && dex.variants[1]) {
-          const lib = findLib(dex.variants[1]);
-          ex.alt = { name: dex.variants[1], muscles: lib ? lib.m.slice() : ex.muscles.slice(), equip: lib ? lib.e.slice() : ['ma'], type: lib ? lib.t : ex.type };
-        }
+        if (!dex) return;
+        dex.variants.slice(1).forEach(vn => {
+          if (ex.alts.some(a => exKeyOf(a.name) === exKeyOf(vn))) return;
+          const lib = findLib(vn);
+          ex.alts.push({ name: vn, muscles: lib ? lib.m.slice() : ex.muscles.slice(), equip: lib ? lib.e.slice() : ['ma'], type: lib ? lib.t : ex.type });
+        });
       });
     });
-    state.altsSeeded = true;
+    state.variationsSeeded = true;
   }
 }
 
@@ -1062,7 +1068,7 @@ function deloadWeight(w) { const n = num(w); if (!n) return ''; const v = n * 0.
 /* Build a session entry (supports a primary + optional alternate exercise) */
 function makeSessionEntry(ex) {
   const opts = [{ name: ex.name, equip: (ex.equip || []).slice() }];
-  if (ex.alt && ex.alt.name) opts.push({ name: ex.alt.name, equip: (ex.alt.equip || []).slice() });
+  (ex.alts || []).forEach(a => { if (a && a.name) opts.push({ name: a.name, equip: (a.equip || []).slice() }); });
   return { opts, variant: 0, name: opts[0].name, equip: opts[0].equip, sets: buildSets(ex.feeders || 0, ex.sets || [], opts[0].name) };
 }
 function buildSets(feederCount, workingSets, name) {
@@ -1124,7 +1130,6 @@ function renderSession() {
   el.innerHTML = html;
 }
 
-function pulleyLabel(p) { return p === 'high' ? 'High pulley' : p === 'mid' ? 'Mid pulley' : p === 'low' ? 'Low pulley' : p; }
 function escapeHtml(s) { return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 function exerciseCardHTML(key, entry, idx) {
@@ -1153,7 +1158,7 @@ function exerciseCardHTML(key, entry, idx) {
 
   const isCable = (entry.equip || []).includes('ca');
   let pills = '';
-  if (isCable || meta.pulley) pills += `<button class="ex-pill ${meta.pulley ? 'set' : ''}" onclick="openExDetails('${key}')">⇅ ${meta.pulley ? pulleyLabel(meta.pulley) : 'Set pulley'}</button>`;
+  if (isCable || meta.pulley) pills += `<button class="ex-pill ${meta.pulley ? 'set' : ''}" onclick="openExDetails('${key}')">⇅ ${meta.pulley ? 'Pulley ' + escapeHtml(meta.pulley) : 'Set pulley'}</button>`;
   const pillsHTML = pills ? `<div class="ex-pills">${pills}</div>` : '';
   const noteHTML = meta.note ? `<div class="ex-note-line">📝 ${escapeHtml(meta.note)}</div>` : '';
 
@@ -1210,20 +1215,15 @@ function openExDetails(key) {
   let html = `<h3>${title}</h3><div class="sub mb">Saved for this exercise everywhere it appears.</div>`;
   html += `<div class="field" style="margin-top:0;"><label>Notes</label>
       <textarea id="ex-note" rows="3" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:12px;font-size:16px;outline:none;resize:vertical;" placeholder="Seat height, grip, cues…">${escapeHtml(meta.note)}</textarea></div>`;
-  html += `<div class="field"><label>Pulley height ${isCable ? '' : '<span class="faint">(cable exercises)</span>'}</label>
-      <select id="ex-pulley" class="big">
-        <option value="" ${!meta.pulley ? 'selected' : ''}>— none —</option>
-        <option value="high" ${meta.pulley === 'high' ? 'selected' : ''}>High</option>
-        <option value="mid" ${meta.pulley === 'mid' ? 'selected' : ''}>Mid</option>
-        <option value="low" ${meta.pulley === 'low' ? 'selected' : ''}>Low</option>
-      </select></div>`;
+  html += `<div class="field"><label>Pulley height</label>
+      <input id="ex-pulley" type="text" placeholder="e.g. 3, notch 4, high…" value="${escapeHtml(meta.pulley)}"></div>`;
   html += `<button class="btn btn-primary btn-block mt" onclick="saveExDetails('${nameKey}')">Save</button>`;
   openSheet(html);
 }
 function saveExDetails(nameKey) {
   const meta = getMeta(nameKey);
   meta.note = document.getElementById('ex-note').value.trim();
-  meta.pulley = document.getElementById('ex-pulley').value;
+  meta.pulley = document.getElementById('ex-pulley').value.trim();
   save(); closeSheet();
   if (state.active) renderSession();
 }
@@ -1428,12 +1428,11 @@ function renderWorkoutEditor() {
     html += `<div class="muted" style="font-size:13.5px; padding:6px 0;">No exercises yet. Tap “+ Add” to pick from the library${w.muscles.length ? '' : ' (choose muscle groups above to pre-filter it)'}.</div>`;
   } else {
     w.exercises.forEach((ex, i) => {
-      const altLine = ex.alt
-        ? `<div class="exs" style="color:var(--muted);">or <b style="color:var(--text);">${ex.alt.name}</b> · <span onclick="clearAlt('${w.id}',${i})" style="color:var(--red);cursor:pointer;">remove</span></div>`
-        : `<div class="exs"><span onclick="openAltPicker('${w.id}',${i})" style="color:var(--accent);cursor:pointer;">＋ add alternate option</span></div>`;
+      const alts = ex.alts || [];
+      const varLines = alts.map((a, ai) => `<div class="exs" style="color:var(--muted);">↳ ${a.name} <span onclick="removeVariation('${w.id}',${i},${ai})" style="color:var(--red);cursor:pointer;">✕</span></div>`).join('');
       html += `<div class="ed-ex">
           <div class="reorder"><button onclick="moveExercise('${w.id}',${i},-1)">▲</button><button onclick="moveExercise('${w.id}',${i},1)">▼</button></div>
-          <div class="grow"><div class="exn">${ex.name}</div><div class="exs">${schemeText(ex.feeders, ex.sets)}</div>${altLine}</div>
+          <div class="grow"><div class="exn">${ex.name}</div><div class="exs">${schemeText(ex.feeders, ex.sets)}</div>${varLines}<div class="exs"><span onclick="openVariationPicker('${w.id}',${i})" style="color:var(--accent);cursor:pointer;">＋ ${alts.length ? 'edit variations' : 'add variations'}</span></div></div>
           <button class="ed-del" onclick="removeExercise('${w.id}',${i})" aria-label="Remove">✕</button>
         </div>`;
     });
@@ -1443,37 +1442,40 @@ function renderWorkoutEditor() {
 }
 
 /* --- Exercise picker (bottom sheet), filtered by muscle groups + equipment --- */
-let pickerMode = 'workout';   // 'workout' | 'alt'
-let _altTarget = null;
+let pickerMode = 'workout';   // 'workout' | 'variation'
+let _varTarget = null;
 function openExercisePicker(id) { editingWorkoutId = id; pickerMode = 'workout'; pickerSearch = ''; renderPicker(); }
-function openAltPicker(id, idx) { editingWorkoutId = id; pickerMode = 'alt'; _altTarget = idx; pickerSearch = ''; renderPicker(); }
+function openVariationPicker(id, idx) { editingWorkoutId = id; pickerMode = 'variation'; _varTarget = idx; pickerSearch = ''; renderPicker(); }
 function renderPicker() {
   const w = getWorkout(editingWorkoutId);
   if (!w) return;
-  const alt = pickerMode === 'alt';
-  const chosen = new Set(w.exercises.map(x => exKeyOf(x.name)));
-  const curAlt = alt && w.exercises[_altTarget] && w.exercises[_altTarget].alt ? exKeyOf(w.exercises[_altTarget].alt.name) : null;
+  const isVar = pickerMode === 'variation';
+  const targetEx = isVar ? w.exercises[_varTarget] : null;
+  if (isVar && !targetEx) { pickerMode = 'workout'; return renderPicker(); }
+  const primaryKey = targetEx ? exKeyOf(targetEx.name) : null;
+  const chosen = isVar ? new Set((targetEx.alts || []).map(a => exKeyOf(a.name))) : new Set(w.exercises.map(x => exKeyOf(x.name)));
   let list = libAll().filter(exAvailable);
-  if (w.muscles.length) list = list.filter(x => x.m.some(m => w.muscles.includes(m)));
+  if (!isVar && w.muscles.length) list = list.filter(x => x.m.some(m => w.muscles.includes(m)));
   const q = pickerSearch.trim().toLowerCase();
   if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
+  if (isVar) list = list.filter(x => exKeyOf(x.n) !== primaryKey);
   const groups = {};
   list.forEach(x => { const g = x.m[0]; (groups[g] = groups[g] || []).push(x); });
 
-  let body = `<h3>${alt ? 'Choose alternate' : 'Add exercises'}</h3><div class="sub mb">${alt ? 'A second option you can swap to mid-workout.' : (w.muscles.length ? w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : 'All muscles') + ' · filtered to your equipment'}</div>
+  let body = `<h3>${isVar ? 'Variations of ' + targetEx.name : 'Add exercises'}</h3><div class="sub mb">${isVar ? 'Pick any number — swap between them mid-workout.' : (w.muscles.length ? w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : 'All muscles') + ' · filtered to your equipment'}</div>
     <input class="pick-search" placeholder="Search exercises…" value="${pickerSearch.replace(/"/g, '&quot;')}" oninput="pickerSearch=this.value; renderPicker();">`;
-  body += customAddBtn(alt ? 'alt' : 'workout');
+  body += customAddBtn(isVar ? 'variation' : 'workout');
   if (!list.length) {
-    body += `<div class="empty" style="padding:24px;">No matching exercises. Try other muscle groups, add equipment in Settings, or add a custom one above.</div>`;
+    body += `<div class="empty" style="padding:24px;">No matching exercises. Try a search, add equipment in Settings, or add a custom one above.</div>`;
   } else {
     MUSCLE.forEach(mg => {
       if (!groups[mg]) return;
       body += `<div class="pick-group">${MUSCLE_LABEL[mg]}</div>`;
       groups[mg].forEach(x => {
         const k = exKeyOf(x.n);
-        const on = alt ? (curAlt === k) : chosen.has(k);
+        const on = chosen.has(k);
         const tags = x.e.map(e => EQUIP_TAG[e]).join(' / ');
-        const fn = alt ? `pickAlt(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)` : `pickerToggle(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)`;
+        const fn = isVar ? `toggleVariation(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)` : `pickerToggle(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)`;
         body += `<div class="pick-item ${on ? 'on' : ''}" onclick="${fn}">
             <div class="grow"><div class="pn">${x.n}</div><div class="tag">${tags}</div></div>
             <div class="pick-check">✓</div>
@@ -1497,13 +1499,18 @@ function pickerToggle(name) {
   }
   save(); renderPicker();
 }
-function pickAlt(name) {
-  const w = getWorkout(editingWorkoutId); if (!w || _altTarget == null || !w.exercises[_altTarget]) return;
-  const lib = findLib(name); if (!lib) return;
-  w.exercises[_altTarget].alt = { name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t };
-  save(); closeSheet(); pickerMode = 'workout'; renderProgram();
+function toggleVariation(name) {
+  const w = getWorkout(editingWorkoutId); if (!w) return;
+  const ex = w.exercises[_varTarget]; if (!ex) return;
+  if (!Array.isArray(ex.alts)) ex.alts = [];
+  const k = exKeyOf(name);
+  if (k === exKeyOf(ex.name)) return;
+  const i = ex.alts.findIndex(a => exKeyOf(a.name) === k);
+  if (i >= 0) ex.alts.splice(i, 1);
+  else { const lib = findLib(name); if (!lib) return; ex.alts.push({ name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t }); }
+  save(); renderPicker();
 }
-function clearAlt(id, idx) { const w = getWorkout(id); if (w && w.exercises[idx]) { delete w.exercises[idx].alt; save(); renderProgram(); } }
+function removeVariation(id, i, ai) { const w = getWorkout(id); if (w && w.exercises[i] && w.exercises[i].alts) { w.exercises[i].alts.splice(ai, 1); save(); renderProgram(); } }
 
 /* --- Ad-hoc exercise during a live workout --- */
 let sessionPickerSearch = '';
@@ -1567,7 +1574,7 @@ function saveCustomExercise() {
   if (!findLib(name)) state.customExercises.push({ n: name, m: d.muscles.slice(), e: d.equip.length ? d.equip.slice() : ['bw'], t: d.type });
   save();
   if (d.mode === 'session') addSessionExercise(name);
-  else if (d.mode === 'alt') pickAlt(name);
+  else if (d.mode === 'variation') toggleVariation(name);
   else pickerToggle(name);
 }
 
