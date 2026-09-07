@@ -171,16 +171,25 @@
   .check-item.on .check-box { background: var(--green); border-color: var(--green); color: #05230f; }
   .check-item.on .check-label { color: var(--muted); text-decoration: line-through; }
 
-  /* Rest timer */
-  .rest-overlay { position: fixed; inset: 0; z-index: 90; background: rgba(6,8,12,0.9); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: none; align-items: center; justify-content: center; flex-direction: column; padding: 24px; }
-  .rest-overlay.open { display: flex; }
-  .rest-ring { position: relative; width: 260px; height: 260px; }
-  .rest-ring svg { transform: rotate(-90deg); }
-  .rest-time { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; }
-  .rest-time .t { font-size: 60px; font-weight: 900; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
-  .rest-time .lbl { color: var(--muted); font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; }
-  .rest-ctrls { display: flex; gap: 12px; margin-top: 30px; }
-  .rest-ctrls .btn { min-width: 78px; }
+  /* Rest timer — compact banner above the tab bar (non-blocking) */
+  .rest-banner { position: fixed; left: 8px; right: 8px; bottom: calc(80px + var(--safe-bottom)); max-width: 624px; margin: 0 auto; z-index: 60; background: var(--surface3); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 10px 30px rgba(0,0,0,.4); overflow: hidden; display: none; }
+  .rest-banner.open { display: block; }
+  .rb-prog { height: 3px; background: var(--accent); width: 100%; transition: width 1s linear; }
+  .rb-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 10px 9px 15px; }
+  .rb-time { font-weight: 900; font-size: 21px; font-variant-numeric: tabular-nums; }
+  .rb-time .rb-lbl { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; margin-left: 5px; }
+  .rb-ctrls { display: flex; gap: 6px; }
+  .rb-ctrls button { background: var(--surface); border: 1px solid var(--border); color: var(--text); border-radius: 9px; padding: 9px 11px; font-weight: 800; font-size: 13px; cursor: pointer; }
+  .rb-ctrls .rb-skip { background: var(--accent); color: #1a0d05; border-color: var(--accent); }
+
+  /* Info (i) button + detail pills on exercise cards */
+  .ex-info { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--border); background: var(--surface2); color: var(--muted); font-size: 14px; font-weight: 800; font-style: italic; font-family: Georgia, serif; cursor: pointer; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+  .ex-info.has { border-color: var(--accent); color: var(--accent); }
+  .ex-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .ex-pill { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: var(--surface2); color: var(--muted); border: 1px solid var(--border); cursor: pointer; }
+  .ex-pill.set { color: var(--blue); border-color: var(--blue); }
+  .ex-note-line { font-size: 12.5px; color: var(--accent2); margin-top: 6px; font-weight: 600; }
+  .add-ex-btn { background: none; border: 1px dashed var(--border); color: var(--muted); width: 100%; padding: 13px; border-radius: 12px; font-size: 14px; font-weight: 700; cursor: pointer; }
 
   /* Floating rest button during session */
   .fab-rest { position: fixed; right: 16px; bottom: calc(96px + var(--safe-bottom)); z-index: 45; background: var(--accent); color: #1a0d05; border: none; border-radius: 999px; padding: 13px 20px; font-weight: 800; font-size: 15px; box-shadow: 0 8px 24px rgba(255,106,43,.35); cursor: pointer; display: none; align-items: center; gap: 8px; }
@@ -337,22 +346,16 @@
 <!-- Floating rest timer button (during session) -->
 <button class="fab-rest" id="fab-rest" onclick="openRest()">⏱️ Rest</button>
 
-<!-- Rest timer overlay -->
-<div class="rest-overlay" id="rest-overlay">
-  <div class="rest-ring">
-    <svg width="260" height="260" viewBox="0 0 260 260">
-      <circle cx="130" cy="130" r="118" fill="none" stroke="#263041" stroke-width="14"></circle>
-      <circle id="rest-arc" cx="130" cy="130" r="118" fill="none" stroke="#ff6a2b" stroke-width="14" stroke-linecap="round" stroke-dasharray="741.4" stroke-dashoffset="0"></circle>
-    </svg>
-    <div class="rest-time">
-      <div class="t" id="rest-t">2:45</div>
-      <div class="lbl">Rest</div>
+<!-- Rest timer banner (non-blocking, sits above the tab bar) -->
+<div class="rest-banner" id="rest-banner">
+  <div class="rb-prog" id="rb-prog"></div>
+  <div class="rb-row">
+    <div class="rb-time"><span id="rest-t">2:45</span><span class="rb-lbl">rest</span></div>
+    <div class="rb-ctrls">
+      <button onclick="bumpRest(-15)">−15</button>
+      <button onclick="bumpRest(15)">+15</button>
+      <button class="rb-skip" onclick="closeRest()">Skip</button>
     </div>
-  </div>
-  <div class="rest-ctrls">
-    <button class="btn btn-outline" onclick="bumpRest(-30)">−30s</button>
-    <button class="btn btn-outline" onclick="bumpRest(30)">+30s</button>
-    <button class="btn btn-primary" onclick="closeRest()">Done</button>
   </div>
 </div>
 
@@ -578,7 +581,14 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
 const _libIndex = {};
 EXERCISE_LIB.forEach(x => { _libIndex[exKeyOf(x.n)] = x; });
 function exKeyOf(name) { return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
-function findLib(name) { return _libIndex[exKeyOf(name)] || null; }
+function libAll() { return EXERCISE_LIB.concat(state.customExercises || []); }
+function findLib(name) { const k = exKeyOf(name); return _libIndex[k] || (state.customExercises || []).find(x => exKeyOf(x.n) === k) || null; }
+/* Per-exercise meta (note + pulley height), keyed by exercise name slug — so it
+   follows the exercise across workouts, never tied to a single workout. */
+function getMeta(key) { if (!state.exerciseMeta) state.exerciseMeta = {}; if (!state.exerciseMeta[key]) state.exerciseMeta[key] = { note: '', pulley: '' }; return state.exerciseMeta[key]; }
+function roundW(v) { return Math.round(v * 2) / 2; }
+/* Prefill: top set = last top weight, feeders = 50%, back-off = 10% lighter */
+function setWeightFor(kind, topW) { topW = num(topW); if (!topW) return ''; if (kind === 'feeder') return roundW(topW * 0.5); if (kind === 'backoff') return roundW(topW * 0.9); return roundW(topW); }
 function getWorkout(id) { return (state.workouts || []).find(w => w.id === id) || null; }
 function scheduledWorkoutId(d) { const id = (state.schedule || {})[(d || new Date()).getDay()]; return id && getWorkout(id) ? id : null; }
 function ownedEquip() { const e = state.settings.equipment; return Array.isArray(e) && e.length ? e : ['gym']; }
@@ -670,6 +680,8 @@ function _applyDefaults() {
   if (typeof state.settings.deload !== 'boolean') state.settings.deload = false;
   if (!Array.isArray(state.settings.equipment) || !state.settings.equipment.length) state.settings.equipment = ['gym'];
   if (!Array.isArray(state.history)) state.history = [];
+  if (!Array.isArray(state.customExercises)) state.customExercises = [];
+  if (!state.exerciseMeta || typeof state.exerciseMeta !== 'object') state.exerciseMeta = {};
   if (!('active' in state)) state.active = null;
   _migrateV2();
 }
@@ -700,6 +712,23 @@ function _migrateV2() {
     s.entries = ne;
   });
   if (state.active && !state.active.workoutId) state.active = null; // drop old-format in-progress session
+  // One-time: restore the original A/B alternate options on the seeded workouts.
+  if (!state.altsSeeded) {
+    state.workouts.forEach(w => {
+      if (!String(w.id).startsWith('seed-')) return;
+      const day = PROGRAM.days[Number(String(w.id).slice(5))];
+      if (!day) return;
+      w.exercises.forEach(ex => {
+        if (ex.alt) return;
+        const dex = day.exercises.find(x => x.variants[0] === ex.name);
+        if (dex && dex.variants[1]) {
+          const lib = findLib(dex.variants[1]);
+          ex.alt = { name: dex.variants[1], muscles: lib ? lib.m.slice() : ex.muscles.slice(), equip: lib ? lib.e.slice() : ['ma'], type: lib ? lib.t : ex.type };
+        }
+      });
+    });
+    state.altsSeeded = true;
+  }
 }
 
 function _showSaved() {
@@ -1022,20 +1051,36 @@ function startWorkout(id) {
   if (!state.active || state.active.workoutId !== id) {
     if (!wko.exercises.length) { alert('This workout has no exercises yet. Add some in Program.'); return; }
     const entries = {};
-    wko.exercises.forEach(ex => {
-      const key = exKeyOf(ex.name);
-      const last = lastEntry(key);
-      const prefillW = last ? (bestTopSet(last.entry)?.weight || '') : '';
-      const w = state.settings.deload && prefillW ? deloadWeight(prefillW) : prefillW;
-      const feeders = Array.from({ length: ex.feeders || 0 }, () => ({ k: 'feeder', r: '', weight: '', reps: '', done: false }));
-      entries[key] = { name: ex.name, note: ex.note || '', sets: [...feeders, ...ex.sets.map(s => ({ k: s.k, r: s.r, weight: w, reps: '', done: false }))] };
-    });
+    wko.exercises.forEach(ex => { entries[exKeyOf(ex.name)] = makeSessionEntry(ex); });
     state.active = { id: uid(), date: todayISO(), workoutId: id, workoutName: wko.name, color: wko.color, mobility: (wko.mobility || []).slice(), startedAt: Date.now(), entries, mobilityDone: [], deload: state.settings.deload };
     save();
   }
   showTab('today');
 }
 function deloadWeight(w) { const n = num(w); if (!n) return ''; const v = n * 0.75; return Math.round(v * 2) / 2; }
+
+/* Build a session entry (supports a primary + optional alternate exercise) */
+function makeSessionEntry(ex) {
+  const opts = [{ name: ex.name, equip: (ex.equip || []).slice() }];
+  if (ex.alt && ex.alt.name) opts.push({ name: ex.alt.name, equip: (ex.alt.equip || []).slice() });
+  return { opts, variant: 0, name: opts[0].name, equip: opts[0].equip, sets: buildSets(ex.feeders || 0, ex.sets || [], opts[0].name) };
+}
+function buildSets(feederCount, workingSets, name) {
+  const last = lastEntry(exKeyOf(name));
+  const prefillW = last ? (bestTopSet(last.entry)?.weight || '') : '';
+  const base = state.settings.deload && prefillW ? deloadWeight(prefillW) : prefillW;
+  const feeders = Array.from({ length: feederCount }, () => ({ k: 'feeder', r: '', weight: setWeightFor('feeder', base), reps: '', done: false }));
+  const working = (workingSets || []).map(s => ({ k: s.k, r: s.r, weight: setWeightFor(s.k, base), reps: '', done: false }));
+  return [...feeders, ...working];
+}
+/* Ensure a session entry has the opts/variant shape (upgrades sessions started before this build) */
+function normEntry(entry) {
+  if (!entry.opts) entry.opts = [{ name: entry.name, equip: entry.equip || [] }];
+  if (typeof entry.variant !== 'number') entry.variant = 0;
+  entry.name = entry.opts[entry.variant].name;
+  entry.equip = entry.opts[entry.variant].equip || [];
+  return entry;
+}
 
 function renderSession() {
   const el = document.getElementById('page-session');
@@ -1058,6 +1103,8 @@ function renderSession() {
 
   entryList.forEach(([key, entry], i) => { html += exerciseCardHTML(key, entry, i); });
 
+  html += `<button class="add-ex-btn" onclick="openSessionPicker()">+ Add exercise</button>`;
+
   // Mobility
   html += `<div class="section-label">🧘 Post-Workout Mobility (5 min)</div><div class="card">`;
   if (s.mobility && s.mobility.length) {
@@ -1077,20 +1124,38 @@ function renderSession() {
   el.innerHTML = html;
 }
 
+function pulleyLabel(p) { return p === 'high' ? 'High pulley' : p === 'mid' ? 'Mid pulley' : p === 'low' ? 'Low pulley' : p; }
+function escapeHtml(s) { return String(s || '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
 function exerciseCardHTML(key, entry, idx) {
+  normEntry(entry);
+  const nameKey = exKeyOf(entry.name);
+  const meta = getMeta(nameKey);
   const allDone = entry.sets.length && entry.sets.every(x => x.done);
-  const last = lastEntry(key);
+  const last = lastEntry(nameKey);
 
   let hint = '';
   if (last) {
     const t = bestTopSet(last.entry);
     if (t) {
-      const pb = allTimeBestE1RM(key);
+      const pb = allTimeBestE1RM(nameKey);
       const cur = e1rm(t.weight, t.reps);
       const isPB = cur >= pb - 0.01 && pb > 0;
       hint = `<div class="lasthint">↩️ <span>Last: <b>${fmtWeight(t.weight)} × ${num(t.reps)}</b> <span class="faint">(${last.session.date})</span></span>${isPB ? '<span class="pr">🏆 PR</span>' : ''}</div>`;
     }
   }
+
+  let variantHTML = '';
+  if (entry.opts.length > 1) {
+    variantHTML = `<div class="variant-toggle">` + entry.opts.map((o, vi) =>
+      `<button class="${vi === entry.variant ? 'active' : ''}" onclick="switchVariant('${key}',${vi})">${o.name}</button>`).join('') + `</div>`;
+  }
+
+  const isCable = (entry.equip || []).includes('ca');
+  let pills = '';
+  if (isCable || meta.pulley) pills += `<button class="ex-pill ${meta.pulley ? 'set' : ''}" onclick="openExDetails('${key}')">⇅ ${meta.pulley ? pulleyLabel(meta.pulley) : 'Set pulley'}</button>`;
+  const pillsHTML = pills ? `<div class="ex-pills">${pills}</div>` : '';
+  const noteHTML = meta.note ? `<div class="ex-note-line">📝 ${escapeHtml(meta.note)}</div>` : '';
 
   let setsHTML = `<div class="set-head"><span>Set</span><span>Weight</span><span>Reps</span><span></span><span></span></div>`;
   entry.sets.forEach((st, si) => {
@@ -1114,14 +1179,53 @@ function exerciseCardHTML(key, entry, idx) {
         <div class="grow">
           <div class="ex-name">${entry.name}</div>
           <div class="ex-scheme">${schemeTextSets(entry.sets)}</div>
-          ${entry.note ? `<div class="ex-note">↳ ${entry.note}</div>` : ''}
         </div>
+        <button class="ex-info ${meta.note ? 'has' : ''}" onclick="openExDetails('${key}')" aria-label="Exercise notes">i</button>
       </div>
       <div class="ex-body">
+        ${variantHTML}
+        ${pillsHTML}
+        ${noteHTML}
         ${hint}
         ${setsHTML}
       </div>
     </div>`;
+}
+function switchVariant(key, vi) {
+  const entry = state.active.entries[key];
+  entry.variant = vi;
+  entry.name = entry.opts[vi].name;
+  entry.equip = entry.opts[vi].equip || [];
+  const last = lastEntry(exKeyOf(entry.name));
+  const prefillW = last ? (bestTopSet(last.entry)?.weight || '') : '';
+  const base = state.settings.deload && prefillW ? deloadWeight(prefillW) : prefillW;
+  entry.sets.forEach(st => { if (!st.done && !num(st.reps)) st.weight = setWeightFor(st.k, base); });
+  save(); renderSession();
+}
+function openExDetails(key) {
+  const entry = state.active ? state.active.entries[key] : null;
+  let nameKey = key, title = key, isCable = true;
+  if (entry) { normEntry(entry); nameKey = exKeyOf(entry.name); title = entry.name; isCable = (entry.equip || []).includes('ca'); }
+  const meta = getMeta(nameKey);
+  let html = `<h3>${title}</h3><div class="sub mb">Saved for this exercise everywhere it appears.</div>`;
+  html += `<div class="field" style="margin-top:0;"><label>Notes</label>
+      <textarea id="ex-note" rows="3" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:12px;font-size:16px;outline:none;resize:vertical;" placeholder="Seat height, grip, cues…">${escapeHtml(meta.note)}</textarea></div>`;
+  html += `<div class="field"><label>Pulley height ${isCable ? '' : '<span class="faint">(cable exercises)</span>'}</label>
+      <select id="ex-pulley" class="big">
+        <option value="" ${!meta.pulley ? 'selected' : ''}>— none —</option>
+        <option value="high" ${meta.pulley === 'high' ? 'selected' : ''}>High</option>
+        <option value="mid" ${meta.pulley === 'mid' ? 'selected' : ''}>Mid</option>
+        <option value="low" ${meta.pulley === 'low' ? 'selected' : ''}>Low</option>
+      </select></div>`;
+  html += `<button class="btn btn-primary btn-block mt" onclick="saveExDetails('${nameKey}')">Save</button>`;
+  openSheet(html);
+}
+function saveExDetails(nameKey) {
+  const meta = getMeta(nameKey);
+  meta.note = document.getElementById('ex-note').value.trim();
+  meta.pulley = document.getElementById('ex-pulley').value;
+  save(); closeSheet();
+  if (state.active) renderSession();
 }
 function setField(key, si, field, val) { state.active.entries[key].sets[si][field] = val.trim(); save(); }
 function toggleSet(key, si) {
@@ -1165,10 +1269,15 @@ function finishWorkout() {
   const s = state.active;
   const logged = Object.values(s.entries).some(e => e.sets.some(x => num(x.weight) > 0));
   if (!logged && !confirm('No sets logged. Finish anyway?')) return;
-  // strip empty extra sets that were never touched
+  // Snapshot: re-key by the exercise actually done (active variant), keep only touched sets.
+  const ne = {};
   Object.values(s.entries).forEach(e => {
-    e.sets = e.sets.filter(x => num(x.weight) > 0 || num(x.reps) > 0 || x.done);
+    normEntry(e);
+    const sets = e.sets.filter(x => num(x.weight) > 0 || num(x.reps) > 0 || x.done);
+    if (!sets.length) return;
+    ne[exKeyOf(e.name)] = { name: e.name, sets };
   });
+  s.entries = ne;
   s.finishedAt = Date.now();
   state.history.push(s);
   state.active = null;
@@ -1183,33 +1292,31 @@ function finishWorkout() {
 let _rest = { total: 0, remaining: 0, timer: null };
 const REST_CIRC = 2 * Math.PI * 118; // 741.4
 
-function openRest() { if (!_rest.timer) startRestTimer(); else document.getElementById('rest-overlay').classList.add('open'); }
+function openRest() { if (!_rest.timer) startRestTimer(); else document.getElementById('rest-banner').classList.add('open'); }
 function startRestTimer() {
   _rest.total = state.settings.restSeconds;
   _rest.remaining = state.settings.restSeconds;
-  document.getElementById('rest-overlay').classList.add('open');
+  document.getElementById('rest-banner').classList.add('open');
+  document.getElementById('fab-rest').classList.remove('show');
   drawRest();
   clearInterval(_rest.timer);
-  _rest.timer = setInterval(() => {
-    _rest.remaining--;
-    drawRest();
-    if (_rest.remaining <= 0) { finishRest(); }
-  }, 1000);
+  _rest.timer = setInterval(() => { _rest.remaining--; drawRest(); if (_rest.remaining <= 0) finishRest(); }, 1000);
 }
 function drawRest() {
   const r = Math.max(0, _rest.remaining);
   const m = Math.floor(r / 60), sec = r % 60;
-  document.getElementById('rest-t').textContent = m + ':' + String(sec).padStart(2, '0');
+  const t = document.getElementById('rest-t'); if (t) t.textContent = m + ':' + String(sec).padStart(2, '0');
   const frac = _rest.total ? r / _rest.total : 0;
-  document.getElementById('rest-arc').setAttribute('stroke-dashoffset', String(REST_CIRC * (1 - frac)));
+  const p = document.getElementById('rb-prog'); if (p) p.style.width = (frac * 100) + '%';
 }
 function bumpRest(d) { _rest.remaining = Math.max(0, _rest.remaining + d); _rest.total = Math.max(_rest.total, _rest.remaining); drawRest(); }
-function closeRest() { clearInterval(_rest.timer); _rest.timer = null; document.getElementById('rest-overlay').classList.remove('open'); }
+function _hideRestBanner() { document.getElementById('rest-banner').classList.remove('open'); updateFab(); }
+function closeRest() { clearInterval(_rest.timer); _rest.timer = null; _hideRestBanner(); }
 function finishRest() {
   clearInterval(_rest.timer); _rest.timer = null;
   beep();
   if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
-  setTimeout(() => document.getElementById('rest-overlay').classList.remove('open'), 900);
+  setTimeout(_hideRestBanner, 900);
 }
 let _audioCtx = null;
 function beep() {
@@ -1321,9 +1428,12 @@ function renderWorkoutEditor() {
     html += `<div class="muted" style="font-size:13.5px; padding:6px 0;">No exercises yet. Tap “+ Add” to pick from the library${w.muscles.length ? '' : ' (choose muscle groups above to pre-filter it)'}.</div>`;
   } else {
     w.exercises.forEach((ex, i) => {
+      const altLine = ex.alt
+        ? `<div class="exs" style="color:var(--muted);">or <b style="color:var(--text);">${ex.alt.name}</b> · <span onclick="clearAlt('${w.id}',${i})" style="color:var(--red);cursor:pointer;">remove</span></div>`
+        : `<div class="exs"><span onclick="openAltPicker('${w.id}',${i})" style="color:var(--accent);cursor:pointer;">＋ add alternate option</span></div>`;
       html += `<div class="ed-ex">
           <div class="reorder"><button onclick="moveExercise('${w.id}',${i},-1)">▲</button><button onclick="moveExercise('${w.id}',${i},1)">▼</button></div>
-          <div class="grow"><div class="exn">${ex.name}</div><div class="exs">${schemeText(ex.feeders, ex.sets)}</div></div>
+          <div class="grow"><div class="exn">${ex.name}</div><div class="exs">${schemeText(ex.feeders, ex.sets)}</div>${altLine}</div>
           <button class="ed-del" onclick="removeExercise('${w.id}',${i})" aria-label="Remove">✕</button>
         </div>`;
     });
@@ -1333,31 +1443,38 @@ function renderWorkoutEditor() {
 }
 
 /* --- Exercise picker (bottom sheet), filtered by muscle groups + equipment --- */
-function openExercisePicker(id) { editingWorkoutId = id; pickerSearch = ''; renderPicker(); }
+let pickerMode = 'workout';   // 'workout' | 'alt'
+let _altTarget = null;
+function openExercisePicker(id) { editingWorkoutId = id; pickerMode = 'workout'; pickerSearch = ''; renderPicker(); }
+function openAltPicker(id, idx) { editingWorkoutId = id; pickerMode = 'alt'; _altTarget = idx; pickerSearch = ''; renderPicker(); }
 function renderPicker() {
   const w = getWorkout(editingWorkoutId);
   if (!w) return;
+  const alt = pickerMode === 'alt';
   const chosen = new Set(w.exercises.map(x => exKeyOf(x.name)));
-  let list = EXERCISE_LIB.filter(exAvailable);
+  const curAlt = alt && w.exercises[_altTarget] && w.exercises[_altTarget].alt ? exKeyOf(w.exercises[_altTarget].alt.name) : null;
+  let list = libAll().filter(exAvailable);
   if (w.muscles.length) list = list.filter(x => x.m.some(m => w.muscles.includes(m)));
   const q = pickerSearch.trim().toLowerCase();
   if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
-
   const groups = {};
   list.forEach(x => { const g = x.m[0]; (groups[g] = groups[g] || []).push(x); });
 
-  let body = `<h3>Add exercises</h3><div class="sub mb">${w.muscles.length ? w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : 'All muscles'} · filtered to your equipment</div>
+  let body = `<h3>${alt ? 'Choose alternate' : 'Add exercises'}</h3><div class="sub mb">${alt ? 'A second option you can swap to mid-workout.' : (w.muscles.length ? w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : 'All muscles') + ' · filtered to your equipment'}</div>
     <input class="pick-search" placeholder="Search exercises…" value="${pickerSearch.replace(/"/g, '&quot;')}" oninput="pickerSearch=this.value; renderPicker();">`;
+  body += customAddBtn(alt ? 'alt' : 'workout');
   if (!list.length) {
-    body += `<div class="empty" style="padding:24px;">No matching exercises. Try other muscle groups, or add equipment in Settings.</div>`;
+    body += `<div class="empty" style="padding:24px;">No matching exercises. Try other muscle groups, add equipment in Settings, or add a custom one above.</div>`;
   } else {
     MUSCLE.forEach(mg => {
       if (!groups[mg]) return;
       body += `<div class="pick-group">${MUSCLE_LABEL[mg]}</div>`;
       groups[mg].forEach(x => {
-        const on = chosen.has(exKeyOf(x.n));
+        const k = exKeyOf(x.n);
+        const on = alt ? (curAlt === k) : chosen.has(k);
         const tags = x.e.map(e => EQUIP_TAG[e]).join(' / ');
-        body += `<div class="pick-item ${on ? 'on' : ''}" onclick="pickerToggle(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)">
+        const fn = alt ? `pickAlt(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)` : `pickerToggle(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)`;
+        body += `<div class="pick-item ${on ? 'on' : ''}" onclick="${fn}">
             <div class="grow"><div class="pn">${x.n}</div><div class="tag">${tags}</div></div>
             <div class="pick-check">✓</div>
           </div>`;
@@ -1375,10 +1492,83 @@ function pickerToggle(name) {
   else {
     const lib = findLib(name); if (!lib) return;
     const sch = defaultScheme(lib.t);
-    w.exercises.push({ id: uid(), name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t, feeders: sch.feeders, sets: sch.sets, note: '' });
+    w.exercises.push({ id: uid(), name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t, feeders: sch.feeders, sets: sch.sets });
     if (!w.muscles.length) w.muscles = lib.m.slice();
   }
   save(); renderPicker();
+}
+function pickAlt(name) {
+  const w = getWorkout(editingWorkoutId); if (!w || _altTarget == null || !w.exercises[_altTarget]) return;
+  const lib = findLib(name); if (!lib) return;
+  w.exercises[_altTarget].alt = { name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t };
+  save(); closeSheet(); pickerMode = 'workout'; renderProgram();
+}
+function clearAlt(id, idx) { const w = getWorkout(id); if (w && w.exercises[idx]) { delete w.exercises[idx].alt; save(); renderProgram(); } }
+
+/* --- Ad-hoc exercise during a live workout --- */
+let sessionPickerSearch = '';
+function openSessionPicker() { sessionPickerSearch = ''; renderSessionPicker(); }
+function renderSessionPicker() {
+  if (!state.active) return;
+  const chosen = new Set(Object.values(state.active.entries).map(e => exKeyOf(normEntry(e).name)));
+  let list = libAll().filter(exAvailable);
+  const q = sessionPickerSearch.trim().toLowerCase();
+  if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
+  const groups = {};
+  list.forEach(x => { const g = x.m[0]; (groups[g] = groups[g] || []).push(x); });
+  let body = `<h3>Add exercise</h3><div class="sub mb">Adds to today's session · filtered to your equipment</div>
+    <input class="pick-search" placeholder="Search…" value="${sessionPickerSearch.replace(/"/g, '&quot;')}" oninput="sessionPickerSearch=this.value; renderSessionPicker();">`;
+  body += customAddBtn('session');
+  MUSCLE.forEach(mg => {
+    if (!groups[mg]) return;
+    body += `<div class="pick-group">${MUSCLE_LABEL[mg]}</div>`;
+    groups[mg].forEach(x => {
+      const on = chosen.has(exKeyOf(x.n));
+      body += `<div class="pick-item ${on ? 'on' : ''}" onclick="${on ? '' : `addSessionExercise(&quot;${x.n.replace(/"/g, '&quot;')}&quot;)`}">
+          <div class="grow"><div class="pn">${x.n}</div><div class="tag">${x.e.map(e => EQUIP_TAG[e]).join(' / ')}</div></div>
+          <div class="pick-check">✓</div></div>`;
+    });
+  });
+  body += `<button class="btn btn-primary btn-block mt" onclick="closeSheet(); renderSession();">Done</button>`;
+  openSheet(body);
+}
+function addSessionExercise(name) {
+  const lib = findLib(name); if (!lib) return;
+  const sch = defaultScheme(lib.t);
+  const key = exKeyOf(lib.n);
+  if (!state.active.entries[key]) state.active.entries[key] = makeSessionEntry({ name: lib.n, equip: lib.e.slice(), feeders: sch.feeders, sets: sch.sets });
+  save(); renderSessionPicker();
+}
+
+/* --- Custom exercise (saved to your library for reuse) --- */
+function customAddBtn(mode) { return `<button class="add-ex-btn mt-s" style="margin-bottom:4px;" onclick="openCustomExercise('${mode}')">＋ Add a custom exercise</button>`; }
+let _cx = null;
+function openCustomExercise(mode) { _cx = { name: '', muscles: [], equip: [], type: 'i', mode }; renderCustomForm(); }
+function renderCustomForm() {
+  const d = _cx;
+  let html = `<h3>New custom exercise</h3><div class="sub mb">Saved to your library for reuse.</div>`;
+  html += `<div class="field" style="margin-top:0;"><label>Name</label><input id="cx-name" type="text" placeholder="e.g. Landmine Press" value="${escapeHtml(d.name)}" oninput="_cx.name=this.value"></div>`;
+  html += `<div class="field"><label>Muscle groups</label><div class="chip-wrap">` +
+    MUSCLE.map(m => `<button class="chip ${d.muscles.includes(m) ? 'on' : ''}" onclick="_cxTog('muscles','${m}',this)">${MUSCLE_LABEL[m]}</button>`).join('') + `</div></div>`;
+  html += `<div class="field"><label>Equipment</label><div class="chip-wrap">` +
+    ['db', 'bb', 'sm', 'sq', 'ca', 'ma', 'bw'].map(k => `<button class="chip ${d.equip.includes(k) ? 'on' : ''}" onclick="_cxTog('equip','${k}',this)">${EQUIP_TAG[k]}</button>`).join('') + `</div></div>`;
+  html += `<div class="field"><label>Type</label><div class="chip-wrap">
+      <button class="chip ${d.type === 'c' ? 'on' : ''}" onclick="_cx.type='c'; renderCustomForm();">Compound</button>
+      <button class="chip ${d.type === 'i' ? 'on' : ''}" onclick="_cx.type='i'; renderCustomForm();">Isolation</button>
+    </div></div>`;
+  html += `<button class="btn btn-primary btn-block mt" onclick="saveCustomExercise()">Add</button>`;
+  openSheet(html);
+}
+function _cxTog(field, val, btn) { const a = _cx[field]; const i = a.indexOf(val); if (i >= 0) a.splice(i, 1); else a.push(val); btn.classList.toggle('on'); }
+function saveCustomExercise() {
+  const d = _cx; const name = (d.name || '').trim();
+  if (!name) { alert('Enter a name.'); return; }
+  if (!d.muscles.length) { alert('Pick at least one muscle group.'); return; }
+  if (!findLib(name)) state.customExercises.push({ n: name, m: d.muscles.slice(), e: d.equip.length ? d.equip.slice() : ['bw'], t: d.type });
+  save();
+  if (d.mode === 'session') addSessionExercise(name);
+  else if (d.mode === 'alt') pickAlt(name);
+  else pickerToggle(name);
 }
 
 /* =========================================================
