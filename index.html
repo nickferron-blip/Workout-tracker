@@ -1501,7 +1501,7 @@ function renderWorkoutEditor() {
   html += `<div class="between" style="margin:22px 2px 10px;"><span class="section-label" style="margin:0;">Exercises</span><button class="btn btn-primary btn-sm" onclick="openExercisePicker('${w.id}')">+ Add</button></div>`;
   html += `<div class="card">`;
   if (!w.exercises.length) {
-    html += `<div class="muted" style="font-size:13.5px; padding:6px 0;">No exercises yet. Tap “+ Add” to pick from the library${w.muscles.length ? '' : ' (choose muscle groups above to pre-filter it)'}.</div>`;
+    html += `<div class="muted" style="font-size:13.5px; padding:6px 0;">No exercises yet. Tap “+ Add” to pick from the full library (filter by muscle there if you like).</div>`;
   } else {
     w.exercises.forEach((ex, i) => {
       const alts = ex.alts || [];
@@ -1517,11 +1517,13 @@ function renderWorkoutEditor() {
   document.getElementById('page-program').innerHTML = html;
 }
 
-/* --- Exercise picker (bottom sheet), filtered by muscle groups + equipment --- */
+/* --- Exercise picker (bottom sheet): full library, optional muscle filter + equipment --- */
 let pickerMode = 'workout';   // 'workout' | 'variation'
 let _varTarget = null;
-function openExercisePicker(id) { editingWorkoutId = id; pickerMode = 'workout'; pickerSearch = ''; renderPicker(); }
-function openVariationPicker(id, idx) { editingWorkoutId = id; pickerMode = 'variation'; _varTarget = idx; pickerSearch = ''; renderPicker(); }
+let pickerFilterMuscle = null;
+function openExercisePicker(id) { editingWorkoutId = id; pickerMode = 'workout'; pickerSearch = ''; pickerFilterMuscle = null; renderPicker(); }
+function openVariationPicker(id, idx) { editingWorkoutId = id; pickerMode = 'variation'; _varTarget = idx; pickerSearch = ''; pickerFilterMuscle = null; renderPicker(); }
+function pickerSetFilter(m) { pickerFilterMuscle = m; renderPicker(); }
 function renderPicker() {
   const w = getWorkout(editingWorkoutId);
   if (!w) return;
@@ -1530,19 +1532,22 @@ function renderPicker() {
   if (isVar && !targetEx) { pickerMode = 'workout'; return renderPicker(); }
   const primaryKey = targetEx ? exKeyOf(targetEx.name) : null;
   const chosen = isVar ? new Set((targetEx.alts || []).map(a => exKeyOf(a.name))) : new Set(w.exercises.map(x => exKeyOf(x.name)));
-  let list = libAll().filter(x => exAvailable(x) && !isArchived(exKeyOf(x.n)));
-  if (!isVar && w.muscles.length) list = list.filter(x => x.m.some(m => w.muscles.includes(m)));
+  let avail = libAll().filter(x => exAvailable(x) && !isArchived(exKeyOf(x.n)));
+  if (isVar) avail = avail.filter(x => exKeyOf(x.n) !== primaryKey);
   const q = pickerSearch.trim().toLowerCase();
-  if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
-  if (isVar) list = list.filter(x => exKeyOf(x.n) !== primaryKey);
+  if (q) avail = avail.filter(x => x.n.toLowerCase().includes(q));
+  const present = new Set(); avail.forEach(x => (x.m || []).forEach(m => present.add(m)));
+  const list = pickerFilterMuscle ? avail.filter(x => (x.m || []).includes(pickerFilterMuscle)) : avail;
   const groups = {};
   list.forEach(x => { const g = x.m[0]; (groups[g] = groups[g] || []).push(x); });
 
-  let body = `<h3>${isVar ? 'Variations of ' + targetEx.name : 'Add exercises'}</h3><div class="sub mb">${isVar ? 'Pick any number — swap between them mid-workout.' : (w.muscles.length ? w.muscles.map(m => MUSCLE_LABEL[m]).join(', ') : 'All muscles') + ' · filtered to your equipment'}</div>
+  let body = `<h3>${isVar ? 'Variations of ' + targetEx.name : 'Add exercises'}</h3><div class="sub mb">${isVar ? 'Pick any number — swap between them mid-workout.' : 'Full library · filtered to your equipment'}</div>
     <input class="pick-search" placeholder="Search exercises…" value="${pickerSearch.replace(/"/g, '&quot;')}" oninput="pickerSearch=this.value; renderPicker();">`;
+  body += `<div class="chip-wrap" style="margin:8px 0 2px;"><button class="chip sm ${!pickerFilterMuscle ? 'on' : ''}" onclick="pickerSetFilter(null)">All</button>` +
+    MUSCLE.filter(m => present.has(m)).map(m => `<button class="chip sm ${pickerFilterMuscle === m ? 'on' : ''}" onclick="pickerSetFilter('${m}')">${MUSCLE_LABEL[m]}</button>`).join('') + `</div>`;
   body += customAddBtn(isVar ? 'variation' : 'workout');
   if (!list.length) {
-    body += `<div class="empty" style="padding:24px;">No matching exercises. Try a search, add equipment in Settings, or add a custom one above.</div>`;
+    body += `<div class="empty" style="padding:24px;">No matching exercises. Try a different muscle, a search, add equipment in Settings, or add a custom one above.</div>`;
   } else {
     MUSCLE.forEach(mg => {
       if (!groups[mg]) return;
