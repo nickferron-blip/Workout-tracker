@@ -1220,26 +1220,88 @@ function switchVariant(key, vi) {
   save(); renderSession();
 }
 function setWorkoutNote(v) { if (state.active) { state.active.note = v; save(); } }
+let _exEditKey = null, _exEditName = '';
 function openExDetails(key, fName) {
   const entry = state.active ? state.active.entries[key] : null;
   let nameKey = key, title = fName || key;
   if (entry) { normEntry(entry); nameKey = exKeyOf(entry.name); title = entry.name; }
+  _exEditKey = nameKey; _exEditName = title;
   const meta = getMeta(nameKey);
-  let html = `<h3>${escapeHtml(title)}</h3><div class="sub mb">Saved for this exercise everywhere it appears.</div>`;
-  html += `<div class="field" style="margin-top:0;"><label>Notes</label>
+  let html = `<h3>Exercise details</h3><div class="sub mb">Saved for this exercise everywhere it appears — including your history.</div>`;
+  html += `<div class="field" style="margin-top:0;"><label>Name</label>
+      <input id="ex-name" type="text" value="${escapeHtml(title)}"></div>`;
+  html += `<div class="field"><label>Notes</label>
       <textarea id="ex-note" rows="3" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:12px;font-size:16px;outline:none;resize:vertical;" placeholder="Seat height, grip, cues…">${escapeHtml(meta.note)}</textarea></div>`;
   html += `<div class="field"><label>Pulley height</label>
       <input id="ex-pulley" type="text" placeholder="e.g. 3, notch 4, high…" value="${escapeHtml(meta.pulley)}"></div>`;
-  html += `<button class="btn btn-primary btn-block mt" onclick="saveExDetails('${nameKey}')">Save</button>`;
+  html += `<button class="btn btn-primary btn-block mt" onclick="saveExDetails()">Save</button>`;
   openSheet(html);
 }
-function saveExDetails(nameKey) {
-  const meta = getMeta(nameKey);
+function saveExDetails() {
+  const oldKey = _exEditKey, oldName = _exEditName;
+  const newName = document.getElementById('ex-name').value.trim();
+  let targetKey = oldKey;
+  if (newName && newName !== oldName) {
+    if (renameExercise(oldKey, oldName, newName) === false) return; // name clash — keep sheet open
+    targetKey = exKeyOf(newName);
+  }
+  const meta = getMeta(targetKey);
   meta.note = document.getElementById('ex-note').value.trim();
   meta.pulley = document.getElementById('ex-pulley').value.trim();
   save(); closeSheet();
   if (state.active && currentTab === 'today') renderSession();
   else if (currentTab === 'exercises') renderExercises();
+}
+function _exKeyExists(key) {
+  if (_libIndex[key]) return true;
+  if ((state.customExercises || []).some(x => exKeyOf(x.n) === key)) return true;
+  if ((state.workouts || []).some(w => w.exercises.some(ex => exKeyOf(ex.name) === key || (ex.alts || []).some(a => exKeyOf(a.name) === key)))) return true;
+  if ((state.history || []).some(s => Object.values(s.entries || {}).some(en => exKeyOf(en.name) === key))) return true;
+  return false;
+}
+/* Rename an exercise everywhere it's referenced so history stays connected. */
+function renameExercise(oldKey, oldName, newName) {
+  newName = (newName || '').trim();
+  if (!newName) { alert('Enter a name.'); return false; }
+  const newKey = exKeyOf(newName);
+  if (!newKey) { alert('Enter a valid name.'); return false; }
+  const keyChanged = newKey !== oldKey;
+  if (keyChanged && _exKeyExists(newKey)) { alert('An exercise named "' + newName + '" already exists — pick a different name.'); return false; }
+
+  const custom = (state.customExercises || []).find(x => exKeyOf(x.n) === oldKey);
+  const lib = _libIndex[oldKey];
+
+  // Library side
+  if (custom) { custom.n = newName; }
+  else if (keyChanged) {
+    // Built-in (or history-only): save a custom entry under the new name so it
+    // persists and is editable; hide the original built-in to avoid a duplicate.
+    const base = lib || { m: [], e: [], t: 'i' };
+    state.customExercises.push({ n: newName, m: (base.m || []).slice(), e: (base.e || []).slice(), t: base.t || 'i' });
+    if (lib && !state.archivedExercises.includes(oldKey)) state.archivedExercises.push(oldKey);
+  }
+
+  // References: workouts (+ variations)
+  (state.workouts || []).forEach(w => w.exercises.forEach(ex => {
+    if (exKeyOf(ex.name) === oldKey) ex.name = newName;
+    (ex.alts || []).forEach(a => { if (exKeyOf(a.name) === oldKey) a.name = newName; });
+  }));
+  // References: history (re-key so past data follows the new name)
+  (state.history || []).forEach(s => {
+    if (!s.entries) return;
+    if (keyChanged && s.entries[oldKey]) { const en = s.entries[oldKey]; en.name = newName; s.entries[newKey] = en; delete s.entries[oldKey]; }
+    Object.values(s.entries).forEach(en => { if (exKeyOf(en.name) === oldKey) en.name = newName; });
+  });
+  // References: in-progress session
+  if (state.active && state.active.entries) {
+    Object.values(state.active.entries).forEach(en => { normEntry(en); (en.opts || []).forEach(o => { if (exKeyOf(o.name) === oldKey) o.name = newName; }); if (exKeyOf(en.name) === oldKey) en.name = newName; });
+  }
+  // Meta + archived
+  if (keyChanged && state.exerciseMeta && state.exerciseMeta[oldKey]) { state.exerciseMeta[newKey] = state.exerciseMeta[oldKey]; delete state.exerciseMeta[oldKey]; }
+  if (keyChanged && custom && (state.archivedExercises || []).includes(oldKey)) { state.archivedExercises = state.archivedExercises.filter(k => k !== oldKey); if (!state.archivedExercises.includes(newKey)) state.archivedExercises.push(newKey); }
+
+  save();
+  return true;
 }
 function setField(key, si, field, val) { state.active.entries[key].sets[si][field] = val.trim(); save(); }
 function toggleSet(key, si) {

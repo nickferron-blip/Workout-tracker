@@ -50,7 +50,7 @@ This Mac has **only `git`** (no gh/gcloud/node/brew). It still works because:
   `{"source":{"branch":"main","path":"/"}}`. Never print/store that token.
 
 To ship: edit `index.html` → `git push`. Pages redeploys in ~1–2 min. **Bump the
-`CACHE` version in `sw.js`** (currently `workout-tracker-v11`) whenever you change
+`CACHE` version in `sw.js`** (currently `workout-tracker-v12`) whenever you change
 `index.html`, or returning clients get the old cached shell. User hard-refreshes
 (or reopens the PWA). **Drive data is never touched by app updates.**
 
@@ -115,7 +115,10 @@ session = {
   toggle; "+ Add" creates a custom exercise; tap a row → `openExDetails`; 🗑 →
   `exDeleteOrArchive` — exercises used in a workout or history can't be deleted,
   only **archived** (`archivedExercises`, hidden from lists + both pickers); unused
-  custom ones are hard-deleted).
+  custom ones are hard-deleted). The details sheet (`openExDetails`) edits the
+  **name** too: `renameExercise()` re-keys workouts, variations, history, meta and
+  any in-progress session to the new name slug (built-ins become a custom copy +
+  the original is archived) so history stays connected; name clashes are blocked.
 - Sets: feeders seeded from `ex.feeders`; `addSet(key,'feeder'|'top'|'backoff')`
   inserts in `KIND_ORDER` (feeder→top→back-off); only `added:true` sets get a ✕.
 - Prefill (`buildSets`/`setWeightFor`): from the exercise's own last top set —
@@ -130,10 +133,10 @@ session = {
   mode (−25%); JSON export/import.
 
 ## Status / open items
-- **Done & live** (v11). Editable workouts/schedule/equipment/variations, custom
+- **Done & live** (v12). Editable workouts/schedule/equipment/variations, custom
   exercises, per-exercise notes + free-text pulley, smart prefill distribution,
   banner timer, workout notes, and the Exercises tab (muscle-group filters, add,
-  delete/archive, show-archived) all shipped & verified.
+  delete/archive, show-archived, rename-with-history-migration) all shipped & verified.
 - Possible future work (none requested): per-exercise rep-scheme editing in the
   builder, weekly volume/tonnage summary, bodyweight log, plate-math helper,
   editing a past workout from History.
