@@ -1827,7 +1827,15 @@ function renderExercises() {
     el.innerHTML = html; return;
   }
   html += `<input class="pick-search" placeholder="Search exercises…" oninput="_exFilter(this.value)">`;
-  html += `<div id="ex-list">` + items.map(exItemHTML).join('') + `</div>`;
+  const groups = {};
+  items.forEach(it => { const g = (it.m && it.m[0]) || 'other'; (groups[g] = groups[g] || []).push(it); });
+  let listHtml = '';
+  MUSCLE.concat(['other']).forEach(g => {
+    if (!groups[g]) return;
+    const label = g === 'other' ? 'Other' : MUSCLE_LABEL[g];
+    listHtml += `<div class="ex-group"><div class="pick-group">${label}</div>` + groups[g].map(exItemHTML).join('') + `</div>`;
+  });
+  html += `<div id="ex-list">` + listHtml + `</div>`;
   el.innerHTML = html;
 }
 function exItemHTML(it) {
@@ -1843,7 +1851,11 @@ function exItemHTML(it) {
       <div style="color:var(--faint); font-size:22px;">›</div>
     </div>`;
 }
-function _exFilter(q) { q = (q || '').toLowerCase(); document.querySelectorAll('#ex-list .wk-item').forEach(el => { el.style.display = el.dataset.name.includes(q) ? '' : 'none'; }); }
+function _exFilter(q) {
+  q = (q || '').toLowerCase();
+  document.querySelectorAll('#ex-list .wk-item').forEach(el => { el.style.display = el.dataset.name.includes(q) ? '' : 'none'; });
+  document.querySelectorAll('#ex-list .ex-group').forEach(g => { const any = [...g.querySelectorAll('.wk-item')].some(el => el.style.display !== 'none'); g.style.display = any ? '' : 'none'; });
+}
 
 function deleteSession(id) {
   if (!confirm('Delete this workout from history?')) return;
