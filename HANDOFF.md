@@ -50,7 +50,7 @@ This Mac has **only `git`** (no gh/gcloud/node/brew). It still works because:
   `{"source":{"branch":"main","path":"/"}}`. Never print/store that token.
 
 To ship: edit `index.html` → `git push`. Pages redeploys in ~1–2 min. **Bump the
-`CACHE` version in `sw.js`** (currently `workout-tracker-v6`) whenever you change
+`CACHE` version in `sw.js`** (currently `workout-tracker-v10`) whenever you change
 `index.html`, or returning clients get the old cached shell. User hard-refreshes
 (or reopens the PWA). **Drive data is never touched by app updates.**
 
@@ -61,9 +61,15 @@ The app is data-driven. The original hardcoded `PROGRAM` (from the user's "Rules
 of Execution" doc: Chest&Biceps / Legs / Shoulders&Triceps / Back&Traps, trained
 Mon/Tue/Thu/Fri) is now **only a seed source** used by `seedWorkouts()` +
 `_migrateV2()` on first load. Everything the user sees is editable data:
-- **Workouts** they build (name, colour, muscle groups, ordered exercises).
+- **Workouts** they build (name, colour, muscle groups, ordered exercises, each
+  with any number of **variations** = alternate exercises you swap between).
 - **Schedule** they assign (weekday → workoutId | null) in the Program tab.
 - **Equipment** they own (Settings) — filters the exercise picker.
+- **Custom exercises** (`state.customExercises`, same shape as a library entry)
+  added from the picker; merged into the library via `libAll()` / `findLib()`.
+- **Per-exercise meta** (`state.exerciseMeta[nameSlug] = { note, pulley }`) — notes
+  and a free-text pulley height, keyed by exercise name so they follow the exercise
+  across every workout. Edited via the "i" sheet (`openExDetails`/`saveExDetails`).
 
 `EXERCISE_LIB` (~95 exercises) each `{ n, m:[muscle], e:[equip], t:'c'|'i' }`.
 Equipment codes: `db bb sm sq ca` (user-toggleable) · `ma` fixed/plate machine
@@ -73,7 +79,9 @@ picker; `gym` = everything. Adding an exercise gives it a `defaultScheme(type)`
 
 Progression key = **slug of the exercise name** (`exKeyOf`), so it's continuous
 across workouts/edits. `_migrateV2()` re-keys old `d1e1`+`variant` history entries
-to name slugs and stamps each session with `workoutId/workoutName/color`.
+to name slugs, stamps each session with `workoutId/workoutName/color`, converts a
+legacy single `ex.alt` → `ex.alts[]`, and (once, guarded by `state.variationsSeeded`)
+restores the full original variation sets on the seeded workouts.
 
 ## Data model (`state`)
 ```
@@ -82,27 +90,44 @@ state = {
   history: [ session ],
   workouts: [ { id, name, color, muscles:[key], mobility:[str],
                 exercises:[ { id, name, muscles:[], equip:[], type:'c'|'i',
-                              feeders:int, sets:[{k:'top'|'backoff', r}], note } ] } ],
+                              feeders:int, sets:[{k:'top'|'backoff', r}],
+                              alts:[ {name, muscles, equip, type} ] } ] } ],
   schedule: { 0..6 : workoutId | null },        // JS getDay()
+  customExercises: [ {n, m:[], e:[], t} ],
+  exerciseMeta: { [nameSlug]: { note, pulley } },
+  variationsSeeded: bool,
   settings: { unit, restSeconds, startDate, deload, equipment:['gym'|'db'|...] }
 }
 session = {
-  id, date, workoutId, workoutName, color, startedAt, finishedAt, deload,
+  id, date, workoutId, workoutName, color, startedAt, finishedAt, deload, note,
   mobility:[str], mobilityDone:[i],
-  entries: { [exKeyOf(name)]: { name, note, sets:[ {k, r, weight, reps, done, added?} ] } }
+  // live entry carries variant opts; on finishWorkout it is re-keyed by the
+  // ACTIVE exercise name and collapsed to { name, sets }:
+  entries: { [key]: { opts:[{name,equip}], variant, name, equip,
+                      sets:[ {k, r, weight, reps, done, added?} ] } }
 }
 ```
-- Tabs: **Today** (uses `scheduledWorkoutId()`; session view when `active`),
-  **Program** (schedule editor + rules + workout builder + exercise picker),
-  **Progress**, **History**. Settings via header gear (bottom sheet).
-- Feeder sets are seeded from `ex.feeders`; during a session `addSet(key,'feeder'|'top')`
-  inserts in `KIND_ORDER` (feeder→top→back-off) and only `added:true` sets get a ✕.
-- Features: rest timer (ring + beep + vibrate, auto-starts on set-check),
-  "last time" overload hint + PR badge, e1RM (Epley `w*(1+reps/30)`) trend chart,
-  week counter + deload nudge (weeks 5–6) + deload mode (−25%), JSON export/import.
+- Tabs (5): **Today** (uses `scheduledWorkoutId()`; session view when `active`),
+  **Program** (schedule editor + rules + workout builder + exercise/variation picker),
+  **Progress**, **History**, **Exercises** (`renderExercises` — every saved exercise
+  grouped by muscle, searchable, with its notes + pulley; tap → `openExDetails`).
+- Sets: feeders seeded from `ex.feeders`; `addSet(key,'feeder'|'top'|'backoff')`
+  inserts in `KIND_ORDER` (feeder→top→back-off); only `added:true` sets get a ✕.
+- Prefill (`buildSets`/`setWeightFor`): from the exercise's own last top set —
+  **top = last weight, feeders = 50%, back-off = 10% lighter** (×0.75 on deload).
+- Variations: `entry.opts` lists primary + `ex.alts`; `switchVariant` swaps mid-set
+  and re-prefills untouched sets from the new exercise's history.
+- Other features: compact non-blocking **rest-timer banner** (`#rest-banner`,
+  auto-starts on set-check, beep + vibrate); ad-hoc + custom exercises mid-session
+  (`openSessionPicker`); per-session **workout note** kept in history; weight/rep
+  inputs select-all on focus; "last time" overload hint + PR badge; e1RM (Epley
+  `w*(1+reps/30)`) trend chart; week counter + deload nudge (weeks 5–6) + deload
+  mode (−25%); JSON export/import.
 
 ## Status / open items
-- **Done & live.** Editable workouts/schedule/equipment shipped and verified.
+- **Done & live** (v10). Editable workouts/schedule/equipment/variations, custom
+  exercises, per-exercise notes + free-text pulley, smart prefill distribution,
+  banner timer, workout notes, and the grouped Exercises tab all shipped & verified.
 - Possible future work (none requested): per-exercise rep-scheme editing in the
   builder, weekly volume/tonnage summary, bodyweight log, plate-math helper,
-  editing a past workout from History, custom exercises not in the library.
+  editing a past workout from History.
