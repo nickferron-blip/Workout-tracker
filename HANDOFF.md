@@ -50,7 +50,7 @@ This Mac has **only `git`** (no gh/gcloud/node/brew). It still works because:
   `{"source":{"branch":"main","path":"/"}}`. Never print/store that token.
 
 To ship: edit `index.html` → `git push`. Pages redeploys in ~1–2 min. **Bump the
-`CACHE` version in `sw.js`** (currently `workout-tracker-v10`) whenever you change
+`CACHE` version in `sw.js`** (currently `workout-tracker-v11`) whenever you change
 `index.html`, or returning clients get the old cached shell. User hard-refreshes
 (or reopens the PWA). **Drive data is never touched by app updates.**
 
@@ -94,6 +94,7 @@ state = {
                               alts:[ {name, muscles, equip, type} ] } ] } ],
   schedule: { 0..6 : workoutId | null },        // JS getDay()
   customExercises: [ {n, m:[], e:[], t} ],
+  archivedExercises: [ nameSlug ],              // hidden from lists & pickers
   exerciseMeta: { [nameSlug]: { note, pulley } },
   variationsSeeded: bool,
   settings: { unit, restSeconds, startDate, deload, equipment:['gym'|'db'|...] }
@@ -110,7 +111,11 @@ session = {
 - Tabs (5): **Today** (uses `scheduledWorkoutId()`; session view when `active`),
   **Program** (schedule editor + rules + workout builder + exercise/variation picker),
   **Progress**, **History**, **Exercises** (`renderExercises` — every saved exercise
-  grouped by muscle, searchable, with its notes + pulley; tap → `openExDetails`).
+  grouped by muscle, with muscle-group filter chips, search, and a "Show archived"
+  toggle; "+ Add" creates a custom exercise; tap a row → `openExDetails`; 🗑 →
+  `exDeleteOrArchive` — exercises used in a workout or history can't be deleted,
+  only **archived** (`archivedExercises`, hidden from lists + both pickers); unused
+  custom ones are hard-deleted).
 - Sets: feeders seeded from `ex.feeders`; `addSet(key,'feeder'|'top'|'backoff')`
   inserts in `KIND_ORDER` (feeder→top→back-off); only `added:true` sets get a ✕.
 - Prefill (`buildSets`/`setWeightFor`): from the exercise's own last top set —
@@ -125,9 +130,10 @@ session = {
   mode (−25%); JSON export/import.
 
 ## Status / open items
-- **Done & live** (v10). Editable workouts/schedule/equipment/variations, custom
+- **Done & live** (v11). Editable workouts/schedule/equipment/variations, custom
   exercises, per-exercise notes + free-text pulley, smart prefill distribution,
-  banner timer, workout notes, and the grouped Exercises tab all shipped & verified.
+  banner timer, workout notes, and the Exercises tab (muscle-group filters, add,
+  delete/archive, show-archived) all shipped & verified.
 - Possible future work (none requested): per-exercise rep-scheme editing in the
   builder, weekly volume/tonnage summary, bodyweight log, plate-math helper,
   editing a past workout from History.

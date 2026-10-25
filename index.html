@@ -685,6 +685,7 @@ function _applyDefaults() {
   if (!Array.isArray(state.settings.equipment) || !state.settings.equipment.length) state.settings.equipment = ['gym'];
   if (!Array.isArray(state.history)) state.history = [];
   if (!Array.isArray(state.customExercises)) state.customExercises = [];
+  if (!Array.isArray(state.archivedExercises)) state.archivedExercises = [];
   if (!state.exerciseMeta || typeof state.exerciseMeta !== 'object') state.exerciseMeta = {};
   if (!('active' in state)) state.active = null;
   _migrateV2();
@@ -1467,7 +1468,7 @@ function renderPicker() {
   if (isVar && !targetEx) { pickerMode = 'workout'; return renderPicker(); }
   const primaryKey = targetEx ? exKeyOf(targetEx.name) : null;
   const chosen = isVar ? new Set((targetEx.alts || []).map(a => exKeyOf(a.name))) : new Set(w.exercises.map(x => exKeyOf(x.name)));
-  let list = libAll().filter(exAvailable);
+  let list = libAll().filter(x => exAvailable(x) && !isArchived(exKeyOf(x.n)));
   if (!isVar && w.muscles.length) list = list.filter(x => x.m.some(m => w.muscles.includes(m)));
   const q = pickerSearch.trim().toLowerCase();
   if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
@@ -1531,7 +1532,7 @@ function openSessionPicker() { sessionPickerSearch = ''; renderSessionPicker(); 
 function renderSessionPicker() {
   if (!state.active) return;
   const chosen = new Set(Object.values(state.active.entries).map(e => exKeyOf(normEntry(e).name)));
-  let list = libAll().filter(exAvailable);
+  let list = libAll().filter(x => exAvailable(x) && !isArchived(exKeyOf(x.n)));
   const q = sessionPickerSearch.trim().toLowerCase();
   if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
   const groups = {};
@@ -1585,9 +1586,12 @@ function saveCustomExercise() {
   if (!name) { alert('Enter a name.'); return; }
   if (!d.muscles.length) { alert('Pick at least one muscle group.'); return; }
   if (!findLib(name)) state.customExercises.push({ n: name, m: d.muscles.slice(), e: d.equip.length ? d.equip.slice() : ['bw'], t: d.type });
+  // adding from the Exercises tab un-archives a same-named exercise
+  if (Array.isArray(state.archivedExercises)) state.archivedExercises = state.archivedExercises.filter(k => k !== exKeyOf(name));
   save();
   if (d.mode === 'session') addSessionExercise(name);
   else if (d.mode === 'variation') toggleVariation(name);
+  else if (d.mode === 'library') { closeSheet(); renderExercises(); toast('Exercise added'); }
   else pickerToggle(name);
 }
 
@@ -1815,18 +1819,70 @@ function savedExercises() {
     const mt = state.exerciseMeta[k] || {};
     if ((mt.note || mt.pulley) && !map[k]) { const lib = _libIndex[k] || (state.customExercises || []).find(x => exKeyOf(x.n) === k); map[k] = { key: k, name: lib ? lib.n : k, m: lib ? lib.m.slice() : [], e: lib ? lib.e.slice() : [] }; }
   });
-  Object.values(map).forEach(it => { if (!it.m.length || !it.e.length) { const lib = findLib(it.name); if (lib) { if (!it.m.length) it.m = lib.m.slice(); if (!it.e.length) it.e = lib.e.slice(); } } });
+  (state.archivedExercises || []).forEach(k => { if (!map[k]) { const lib = _libIndex[k] || (state.customExercises || []).find(x => exKeyOf(x.n) === k); map[k] = { key: k, name: lib ? lib.n : k, m: lib ? lib.m.slice() : [], e: lib ? lib.e.slice() : [] }; } });
+  Object.values(map).forEach(it => {
+    if (!it.m.length || !it.e.length) { const lib = findLib(it.name); if (lib) { if (!it.m.length) it.m = lib.m.slice(); if (!it.e.length) it.e = lib.e.slice(); } }
+    it.archived = isArchived(it.key);
+  });
   return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
 }
+
+/* Archive / delete */
+function isArchived(key) { return (state.archivedExercises || []).includes(key); }
+function isCustomEx(key) { return (state.customExercises || []).some(x => exKeyOf(x.n) === key); }
+function isExerciseUsed(key) {
+  const inWorkout = (state.workouts || []).some(w => w.exercises.some(ex => exKeyOf(ex.name) === key || (ex.alts || []).some(a => exKeyOf(a.name) === key)));
+  if (inWorkout) return true;
+  return (state.history || []).some(s => Object.values(s.entries || {}).some(en => exKeyOf(en.name) === key));
+}
+function archiveExercise(key) {
+  if (!Array.isArray(state.archivedExercises)) state.archivedExercises = [];
+  if (!state.archivedExercises.includes(key)) state.archivedExercises.push(key);
+  save(); renderExercises(); toast('Archived — hidden from lists & picker');
+}
+function unarchiveExercise(key) { state.archivedExercises = (state.archivedExercises || []).filter(k => k !== key); save(); renderExercises(); }
+function exDeleteOrArchive(key, name) {
+  if (isExerciseUsed(key)) {
+    if (confirm('"' + name + '" is used in a workout or your history, so it can\'t be deleted.\n\nArchive it instead? It\'ll be hidden from your lists and the exercise picker, but all your history stays intact.')) archiveExercise(key);
+    return;
+  }
+  if (isCustomEx(key)) {
+    if (!confirm('Delete "' + name + '" permanently? This removes it from your library.')) return;
+    state.customExercises = (state.customExercises || []).filter(x => exKeyOf(x.n) !== key);
+    if (state.exerciseMeta) delete state.exerciseMeta[key];
+    unarchiveExercise(key); toast('Deleted');
+  } else {
+    if (!confirm('Hide "' + name + '" from your exercise list and the picker?')) return;
+    archiveExercise(key);
+  }
+}
+
+let exFilterMuscle = null;
+let exShowArchived = false;
+function exSetFilter(m) { exFilterMuscle = m; renderExercises(); }
 function renderExercises() {
   const el = document.getElementById('page-exercises');
-  const items = savedExercises();
-  let html = `<h2 class="title" style="margin:2px 2px 2px;">Exercises</h2><div class="sub" style="margin:0 2px 12px;">${items.length} saved · tap to edit notes & pulley height</div>`;
+  const all = savedExercises();
+  let items = exShowArchived ? all : all.filter(i => !i.archived);
+  if (exFilterMuscle) items = items.filter(i => (i.m || []).includes(exFilterMuscle));
+  const archivedCount = all.filter(i => i.archived).length;
+
+  let html = `<div class="between" style="margin:2px 2px 2px;"><h2 class="title">Exercises</h2><button class="btn btn-primary btn-sm" onclick="openCustomExercise('library')">+ Add</button></div>`;
+  html += `<div class="sub" style="margin:0 2px 12px;">${items.length} exercise${items.length === 1 ? '' : 's'} · tap to edit notes & pulley</div>`;
+
+  // Muscle-group filter chips
+  const present = new Set();
+  (exShowArchived ? all : all.filter(i => !i.archived)).forEach(i => (i.m || []).forEach(m => present.add(m)));
+  html += `<div class="chip-wrap" style="margin-bottom:10px;"><button class="chip sm ${!exFilterMuscle ? 'on' : ''}" onclick="exSetFilter(null)">All</button>` +
+    MUSCLE.filter(m => present.has(m)).map(m => `<button class="chip sm ${exFilterMuscle === m ? 'on' : ''}" onclick="exSetFilter('${m}')">${MUSCLE_LABEL[m]}</button>`).join('') + `</div>`;
+
+  html += `<input class="pick-search" placeholder="Search exercises…" oninput="_exFilter(this.value)">`;
+  html += `<label class="row" style="gap:8px; margin:6px 2px 12px; font-size:13px; color:var(--muted); cursor:pointer;"><input type="checkbox" ${exShowArchived ? 'checked' : ''} onchange="exShowArchived=this.checked; renderExercises();" style="width:auto; transform:scale(1.2); accent-color:var(--accent);"> Show archived${archivedCount ? ' (' + archivedCount + ')' : ''}</label>`;
+
   if (!items.length) {
-    html += `<div class="empty"><div class="big">🏋️</div>Exercises you add to workouts (and custom ones) show here with their notes and pulley height.</div>`;
+    html += `<div class="empty"><div class="big">🏋️</div>${exFilterMuscle ? 'No exercises in this group.' : 'No exercises yet. Tap “+ Add” to create one.'}</div>`;
     el.innerHTML = html; return;
   }
-  html += `<input class="pick-search" placeholder="Search exercises…" oninput="_exFilter(this.value)">`;
   const groups = {};
   items.forEach(it => { const g = (it.m && it.m[0]) || 'other'; (groups[g] = groups[g] || []).push(it); });
   let listHtml = '';
@@ -1846,9 +1902,13 @@ function exItemHTML(it) {
   const det = [];
   if (meta.pulley) det.push(`⇅ Pulley ${escapeHtml(meta.pulley)}`);
   if (meta.note) det.push(`📝 ${escapeHtml(meta.note)}`);
-  return `<div class="wk-item" data-name="${escapeHtml(it.name.toLowerCase())}" style="align-items:flex-start;" onclick="openExDetails('${it.key}','${it.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">
-      <div class="grow"><div class="wk-name">${escapeHtml(it.name)}</div>${sub ? `<div class="wk-meta">${sub}</div>` : ''}${det.length ? `<div class="wk-meta" style="color:var(--accent2); margin-top:4px;">${det.join(' · ')}</div>` : ''}</div>
-      <div style="color:var(--faint); font-size:22px;">›</div>
+  const nm = it.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  const action = it.archived
+    ? `<button class="ed-del" style="color:var(--accent);" onclick="event.stopPropagation(); unarchiveExercise('${it.key}')" aria-label="Unarchive">↩︎</button>`
+    : `<button class="ed-del" onclick="event.stopPropagation(); exDeleteOrArchive('${it.key}','${nm}')" aria-label="Delete">🗑</button>`;
+  return `<div class="wk-item" data-name="${escapeHtml(it.name.toLowerCase())}" style="align-items:flex-start; ${it.archived ? 'opacity:.55;' : ''}">
+      <div class="grow" onclick="openExDetails('${it.key}','${nm}')"><div class="wk-name">${escapeHtml(it.name)}${it.archived ? ' <span class="faint" style="font-weight:600; font-size:12px;">· archived</span>' : ''}</div>${sub ? `<div class="wk-meta">${sub}</div>` : ''}${det.length ? `<div class="wk-meta" style="color:var(--accent2); margin-top:4px;">${det.join(' · ')}</div>` : ''}</div>
+      ${action}
     </div>`;
 }
 function _exFilter(q) {
