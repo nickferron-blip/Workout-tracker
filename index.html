@@ -79,7 +79,7 @@
     background: rgba(16,20,28,0.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
     border-top: 1px solid var(--border);
     padding: 8px 8px calc(8px + var(--safe-bottom));
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px;
+    display: grid; grid-template-columns: repeat(5, 1fr); gap: 2px;
   }
   nav.tabbar button {
     background: none; border: none; color: var(--faint); cursor: pointer;
@@ -333,6 +333,9 @@
 
     <!-- ===== HISTORY ===== -->
     <div id="page-history" class="page"></div>
+
+    <!-- ===== EXERCISES (library) ===== -->
+    <div id="page-exercises" class="page"></div>
   </main>
 
   <nav class="tabbar">
@@ -340,6 +343,7 @@
     <button data-tab="program" onclick="showTab('program')"><span class="ico">📋</span>Program</button>
     <button data-tab="progress" onclick="showTab('progress')"><span class="ico">📈</span>Progress</button>
     <button data-tab="history" onclick="showTab('history')"><span class="ico">📅</span>History</button>
+    <button data-tab="exercises" onclick="showTab('exercises')"><span class="ico">🏋️</span>Exercises</button>
   </nav>
 </div>
 
@@ -958,6 +962,7 @@ function showTab(tab) {
     if (tab === 'program') renderProgram();
     if (tab === 'progress') renderProgress();
     if (tab === 'history') renderHistory();
+    if (tab === 'exercises') renderExercises();
   }
   updateFab();
   window.scrollTo(0, 0);
@@ -1058,7 +1063,7 @@ function startWorkout(id) {
     if (!wko.exercises.length) { alert('This workout has no exercises yet. Add some in Program.'); return; }
     const entries = {};
     wko.exercises.forEach(ex => { entries[exKeyOf(ex.name)] = makeSessionEntry(ex); });
-    state.active = { id: uid(), date: todayISO(), workoutId: id, workoutName: wko.name, color: wko.color, mobility: (wko.mobility || []).slice(), startedAt: Date.now(), entries, mobilityDone: [], deload: state.settings.deload };
+    state.active = { id: uid(), date: todayISO(), workoutId: id, workoutName: wko.name, color: wko.color, mobility: (wko.mobility || []).slice(), startedAt: Date.now(), entries, mobilityDone: [], deload: state.settings.deload, note: '' };
     save();
   }
   showTab('today');
@@ -1110,6 +1115,11 @@ function renderSession() {
   entryList.forEach(([key, entry], i) => { html += exerciseCardHTML(key, entry, i); });
 
   html += `<button class="add-ex-btn" onclick="openSessionPicker()">+ Add exercise</button>`;
+
+  // Workout note (kept in history)
+  html += `<div class="section-label">📝 Workout note</div><div class="card">
+      <textarea id="wk-note" rows="2" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:12px;font-size:16px;outline:none;resize:vertical;" placeholder="How it went — energy, pains, PRs, anything to remember next time…" oninput="setWorkoutNote(this.value)">${escapeHtml(s.note || '')}</textarea>
+    </div>`;
 
   // Mobility
   html += `<div class="section-label">🧘 Post-Workout Mobility (5 min)</div><div class="card">`;
@@ -1166,9 +1176,9 @@ function exerciseCardHTML(key, entry, idx) {
   entry.sets.forEach((st, si) => {
     const kindLabel = st.k === 'top' ? 'Top' : st.k === 'backoff' ? 'Back-off' : 'Feeder';
     setsHTML += `<div class="set-row">
-        <div class="kind ${st.k}">${kindLabel}<small>${st.r ? st.r + ' reps' : 'warm-up'}</small></div>
-        <div class="num-field"><input inputmode="decimal" placeholder="—" value="${st.weight}" onchange="setField('${key}',${si},'weight',this.value)"><span class="unit">${unit()}</span></div>
-        <div class="num-field"><input inputmode="numeric" placeholder="—" value="${st.reps}" onchange="setField('${key}',${si},'reps',this.value)"></div>
+        <div class="kind ${st.k}">${kindLabel}<small>${st.r ? st.r + ' reps' : (st.k === 'feeder' ? 'warm-up' : 'to failure')}</small></div>
+        <div class="num-field"><input inputmode="decimal" placeholder="—" value="${st.weight}" onfocus="this.select()" onchange="setField('${key}',${si},'weight',this.value)"><span class="unit">${unit()}</span></div>
+        <div class="num-field"><input inputmode="numeric" placeholder="—" value="${st.reps}" onfocus="this.select()" onchange="setField('${key}',${si},'reps',this.value)"></div>
         <button class="set-check ${st.done ? 'done' : ''}" onclick="toggleSet('${key}',${si})">${st.done ? '✓' : ''}</button>
         ${st.added ? `<button class="set-del" onclick="deleteSet('${key}',${si})" aria-label="Remove set">✕</button>` : '<span></span>'}
       </div>`;
@@ -1176,6 +1186,7 @@ function exerciseCardHTML(key, entry, idx) {
   setsHTML += `<div class="add-set-row">
       <button class="add-set" onclick="addSet('${key}','feeder')">+ Feeder</button>
       <button class="add-set" onclick="addSet('${key}','top')">+ Top</button>
+      <button class="add-set" onclick="addSet('${key}','backoff')">+ Back-off</button>
     </div>`;
 
   return `<div class="ex">
@@ -1207,12 +1218,13 @@ function switchVariant(key, vi) {
   entry.sets.forEach(st => { if (!st.done && !num(st.reps)) st.weight = setWeightFor(st.k, base); });
   save(); renderSession();
 }
-function openExDetails(key) {
+function setWorkoutNote(v) { if (state.active) { state.active.note = v; save(); } }
+function openExDetails(key, fName) {
   const entry = state.active ? state.active.entries[key] : null;
-  let nameKey = key, title = key, isCable = true;
-  if (entry) { normEntry(entry); nameKey = exKeyOf(entry.name); title = entry.name; isCable = (entry.equip || []).includes('ca'); }
+  let nameKey = key, title = fName || key;
+  if (entry) { normEntry(entry); nameKey = exKeyOf(entry.name); title = entry.name; }
   const meta = getMeta(nameKey);
-  let html = `<h3>${title}</h3><div class="sub mb">Saved for this exercise everywhere it appears.</div>`;
+  let html = `<h3>${escapeHtml(title)}</h3><div class="sub mb">Saved for this exercise everywhere it appears.</div>`;
   html += `<div class="field" style="margin-top:0;"><label>Notes</label>
       <textarea id="ex-note" rows="3" style="width:100%;background:var(--surface2);border:1px solid var(--border);color:var(--text);border-radius:11px;padding:12px;font-size:16px;outline:none;resize:vertical;" placeholder="Seat height, grip, cues…">${escapeHtml(meta.note)}</textarea></div>`;
   html += `<div class="field"><label>Pulley height</label>
@@ -1225,7 +1237,8 @@ function saveExDetails(nameKey) {
   meta.note = document.getElementById('ex-note').value.trim();
   meta.pulley = document.getElementById('ex-pulley').value.trim();
   save(); closeSheet();
-  if (state.active) renderSession();
+  if (state.active && currentTab === 'today') renderSession();
+  else if (currentTab === 'exercises') renderExercises();
 }
 function setField(key, si, field, val) { state.active.entries[key].sets[si][field] = val.trim(); save(); }
 function toggleSet(key, si) {
@@ -1756,6 +1769,7 @@ function renderHistory() {
           <div style="color:var(--faint); font-size:22px;">›</div>
         </div>
         ${summary ? `<div class="hist-summary">${summary}</div>` : ''}
+        ${s.note ? `<div class="hist-summary" style="color:var(--accent2);">📝 ${escapeHtml(s.note)}</div>` : ''}
       </div>`;
   });
   el.innerHTML = html;
@@ -1766,6 +1780,7 @@ function openSessionDetail(id) {
   const color = s.color || '#ff6a2b';
   const dateStr = new Date(s.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
   let html = `<h3 style="color:${color};">${s.workoutName || 'Workout'}</h3><div class="sub mb">${dateStr}</div>`;
+  if (s.note) html += `<div class="ex-note-line" style="margin:0 0 6px;">📝 ${escapeHtml(s.note)}</div>`;
   Object.values(s.entries || {}).forEach(en => {
     if (!en.sets || !en.sets.length) return;
     const logged = en.sets.some(st => num(st.weight) || num(st.reps));
@@ -1783,6 +1798,53 @@ function openSessionDetail(id) {
   html += `<button class="btn btn-danger btn-block mt" onclick="deleteSession('${id}')">Delete workout</button>`;
   openSheet(html);
 }
+/* =========================================================
+   EXERCISES TAB — every saved exercise with its notes & pulley
+   ========================================================= */
+function savedExercises() {
+  const map = {};
+  const add = (name, m, e) => {
+    const k = exKeyOf(name); if (!k) return;
+    if (!map[k]) map[k] = { key: k, name, m: (m || []).slice(), e: (e || []).slice() };
+    else { if (m && m.length && !map[k].m.length) map[k].m = m.slice(); if (e && e.length && !map[k].e.length) map[k].e = e.slice(); }
+  };
+  (state.customExercises || []).forEach(x => add(x.n, x.m, x.e));
+  (state.workouts || []).forEach(w => w.exercises.forEach(ex => { add(ex.name, ex.muscles, ex.equip); (ex.alts || []).forEach(a => add(a.name, a.muscles, a.equip)); }));
+  (state.history || []).forEach(s => Object.values(s.entries || {}).forEach(en => add(en.name)));
+  Object.keys(state.exerciseMeta || {}).forEach(k => {
+    const mt = state.exerciseMeta[k] || {};
+    if ((mt.note || mt.pulley) && !map[k]) { const lib = _libIndex[k] || (state.customExercises || []).find(x => exKeyOf(x.n) === k); map[k] = { key: k, name: lib ? lib.n : k, m: lib ? lib.m.slice() : [], e: lib ? lib.e.slice() : [] }; }
+  });
+  Object.values(map).forEach(it => { if (!it.m.length || !it.e.length) { const lib = findLib(it.name); if (lib) { if (!it.m.length) it.m = lib.m.slice(); if (!it.e.length) it.e = lib.e.slice(); } } });
+  return Object.values(map).sort((a, b) => a.name.localeCompare(b.name));
+}
+function renderExercises() {
+  const el = document.getElementById('page-exercises');
+  const items = savedExercises();
+  let html = `<h2 class="title" style="margin:2px 2px 2px;">Exercises</h2><div class="sub" style="margin:0 2px 12px;">${items.length} saved · tap to edit notes & pulley height</div>`;
+  if (!items.length) {
+    html += `<div class="empty"><div class="big">🏋️</div>Exercises you add to workouts (and custom ones) show here with their notes and pulley height.</div>`;
+    el.innerHTML = html; return;
+  }
+  html += `<input class="pick-search" placeholder="Search exercises…" oninput="_exFilter(this.value)">`;
+  html += `<div id="ex-list">` + items.map(exItemHTML).join('') + `</div>`;
+  el.innerHTML = html;
+}
+function exItemHTML(it) {
+  const meta = getMeta(it.key);
+  const musc = (it.m || []).map(m => MUSCLE_LABEL[m]).filter(Boolean).join(', ');
+  const tags = (it.e || []).map(e => EQUIP_TAG[e]).filter(Boolean).join(' / ');
+  const sub = [musc, tags].filter(Boolean).join(' · ');
+  const det = [];
+  if (meta.pulley) det.push(`⇅ Pulley ${escapeHtml(meta.pulley)}`);
+  if (meta.note) det.push(`📝 ${escapeHtml(meta.note)}`);
+  return `<div class="wk-item" data-name="${escapeHtml(it.name.toLowerCase())}" style="align-items:flex-start;" onclick="openExDetails('${it.key}','${it.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}')">
+      <div class="grow"><div class="wk-name">${escapeHtml(it.name)}</div>${sub ? `<div class="wk-meta">${sub}</div>` : ''}${det.length ? `<div class="wk-meta" style="color:var(--accent2); margin-top:4px;">${det.join(' · ')}</div>` : ''}</div>
+      <div style="color:var(--faint); font-size:22px;">›</div>
+    </div>`;
+}
+function _exFilter(q) { q = (q || '').toLowerCase(); document.querySelectorAll('#ex-list .wk-item').forEach(el => { el.style.display = el.dataset.name.includes(q) ? '' : 'none'; }); }
+
 function deleteSession(id) {
   if (!confirm('Delete this workout from history?')) return;
   state.history = state.history.filter(x => x.id !== id);
