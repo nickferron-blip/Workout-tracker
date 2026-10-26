@@ -50,7 +50,7 @@ This Mac has **only `git`** (no gh/gcloud/node/brew). It still works because:
   `{"source":{"branch":"main","path":"/"}}`. Never print/store that token.
 
 To ship: edit `index.html` → `git push`. Pages redeploys in ~1–2 min. **Bump the
-`CACHE` version in `sw.js`** (currently `workout-tracker-v14`) whenever you change
+`CACHE` version in `sw.js`** (currently `workout-tracker-v15`) whenever you change
 `index.html`, or returning clients get the old cached shell. User hard-refreshes
 (or reopens the PWA). **Drive data is never touched by app updates.**
 
@@ -77,7 +77,9 @@ Mon/Tue/Thu/Fri) is now **only a seed source** used by `seedWorkouts()` +
 Equipment codes: `db bb sm sq ca` (user-toggleable) · `ma` fixed/plate machine
 (needs `gym`) · `bw` bodyweight (always available). `exAvailable()` gates the
 picker; `gym` = everything. Adding an exercise gives it a `defaultScheme(type)`
-(compound → 1 feeder + top 6–8 + back-off 8–10; isolation → 1 feeder + top 10–12).
+(compound → 1 feeder + top 6–8 + back-off 8–10; isolation → 1 feeder + top 10–12),
+then the scheme — feeder count, top/back-off sets, and each set's rep target — is
+editable per workout-exercise via `openSchemeEditor` (tap "· edit sets" in the builder).
 
 Progression key = **slug of the exercise name** (`exKeyOf`), so it's continuous
 across workouts/edits. `_migrateV2()` re-keys old `d1e1`+`variant` history entries

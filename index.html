@@ -1508,7 +1508,7 @@ function renderWorkoutEditor() {
       const varLines = alts.map((a, ai) => `<div class="exs" style="color:var(--muted);">↳ ${a.name} <span onclick="removeVariation('${w.id}',${i},${ai})" style="color:var(--red);cursor:pointer;">✕</span></div>`).join('');
       html += `<div class="ed-ex">
           <div class="reorder"><button onclick="moveExercise('${w.id}',${i},-1)">▲</button><button onclick="moveExercise('${w.id}',${i},1)">▼</button></div>
-          <div class="grow"><div class="exn">${ex.name}</div><div class="exs">${schemeText(ex.feeders, ex.sets)}</div>${varLines}<div class="exs"><span onclick="openVariationPicker('${w.id}',${i})" style="color:var(--accent);cursor:pointer;">＋ ${alts.length ? 'edit variations' : 'add variations'}</span></div></div>
+          <div class="grow"><div class="exn">${ex.name}</div><div class="exs" onclick="openSchemeEditor('${w.id}',${i})" style="cursor:pointer;">${schemeText(ex.feeders, ex.sets)} <span style="color:var(--accent); font-weight:700;">· edit sets</span></div>${varLines}<div class="exs"><span onclick="openVariationPicker('${w.id}',${i})" style="color:var(--accent);cursor:pointer;">＋ ${alts.length ? 'edit variations' : 'add variations'}</span></div></div>
           <button class="ed-del" onclick="removeExercise('${w.id}',${i})" aria-label="Remove">✕</button>
         </div>`;
     });
@@ -1603,6 +1603,53 @@ function toggleVariation(name) {
   save(); renderPicker();
 }
 function removeVariation(id, i, ai) { const w = getWorkout(id); if (w && w.exercises[i] && w.exercises[i].alts) { w.exercises[i].alts.splice(ai, 1); save(); renderProgram(); } }
+
+/* --- Per-exercise sets & reps editor (feeders / top / back-off) --- */
+let _schemeTarget = null;
+function openSchemeEditor(wid, idx) { _schemeTarget = { wid, idx }; renderSchemeEditor(); }
+function _schemeEx() { const t = _schemeTarget; if (!t) return null; const w = getWorkout(t.wid); return w ? w.exercises[t.idx] : null; }
+function renderSchemeEditor() {
+  const ex = _schemeEx(); if (!ex) { closeSheet(); return; }
+  if (!Array.isArray(ex.sets)) ex.sets = [];
+  const feeders = ex.feeders || 0;
+  let html = `<h3>${escapeHtml(ex.name)}</h3><div class="sub mb">Sets & reps for this workout.</div>`;
+  html += `<div class="field" style="margin-top:0;"><label>Feeder / warm-up sets</label>
+      <div class="row" style="gap:12px;">
+        <button class="btn btn-outline btn-sm" onclick="schemeSetFeeders(-1)">−</button>
+        <b style="min-width:24px; text-align:center; font-size:17px;">${feeders}</b>
+        <button class="btn btn-outline btn-sm" onclick="schemeSetFeeders(1)">+</button>
+        <span class="faint" style="font-size:12px;">light ramp-up, not to failure</span>
+      </div></div>`;
+  html += `<div class="field"><label>Working sets (to failure)</label>`;
+  if (!ex.sets.length) html += `<div class="muted" style="font-size:13px; margin-bottom:8px;">No working sets yet — add one below.</div>`;
+  ex.sets.forEach((s, si) => {
+    const lbl = s.k === 'top' ? 'Top' : 'Back-off';
+    html += `<div class="row" style="gap:8px; margin-bottom:8px;">
+        <span class="kind ${s.k}" style="width:66px; font-size:12px; font-weight:800;">${lbl}</span>
+        <input type="text" value="${escapeHtml(s.r || '')}" placeholder="reps e.g. 6–8" onfocus="this.select()" oninput="schemeSetRep(${si}, this.value)" style="flex:1; min-width:0; background:var(--surface2); border:1px solid var(--border); color:var(--text); border-radius:10px; padding:11px 12px; font-size:15px; outline:none;">
+        <button class="ed-del" onclick="schemeRemoveSet(${si})" aria-label="Remove">✕</button>
+      </div>`;
+  });
+  html += `<div class="add-set-row" style="margin-top:4px;">
+      <button class="add-set" onclick="schemeAddSet('top')">+ Top set</button>
+      <button class="add-set" onclick="schemeAddSet('backoff')">+ Back-off set</button>
+    </div></div>`;
+  html += `<button class="btn btn-primary btn-block mt" onclick="closeSheet(); renderProgram();">Done</button>`;
+  openSheet(html);
+}
+function schemeSetFeeders(d) { const ex = _schemeEx(); if (!ex) return; ex.feeders = Math.max(0, Math.min(5, (ex.feeders || 0) + d)); save(); renderSchemeEditor(); }
+function schemeSetRep(si, val) { const ex = _schemeEx(); if (ex && ex.sets[si]) { ex.sets[si].r = val.trim(); save(); } }
+function schemeAddSet(kind) {
+  const ex = _schemeEx(); if (!ex) return;
+  if (!Array.isArray(ex.sets)) ex.sets = [];
+  const r = kind === 'top' ? '8–10' : '10–12';
+  const rank = KIND_ORDER[kind];
+  let at = ex.sets.length;
+  for (let i = 0; i < ex.sets.length; i++) { if (KIND_ORDER[ex.sets[i].k] > rank) { at = i; break; } }
+  ex.sets.splice(at, 0, { k: kind, r });
+  save(); renderSchemeEditor();
+}
+function schemeRemoveSet(si) { const ex = _schemeEx(); if (ex) { ex.sets.splice(si, 1); save(); renderSchemeEditor(); } }
 
 /* --- Ad-hoc exercise during a live workout --- */
 let sessionPickerSearch = '';
