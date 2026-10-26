@@ -1517,13 +1517,24 @@ function renderWorkoutEditor() {
   document.getElementById('page-program').innerHTML = html;
 }
 
-/* --- Exercise picker (bottom sheet): full library, optional muscle filter + equipment --- */
+/* --- Exercise picker (bottom sheet): your own exercises only, optional muscle filter.
+   New exercises come in via "+ Add a custom exercise". --- */
 let pickerMode = 'workout';   // 'workout' | 'variation'
 let _varTarget = null;
 let pickerFilterMuscle = null;
 function openExercisePicker(id) { editingWorkoutId = id; pickerMode = 'workout'; pickerSearch = ''; pickerFilterMuscle = null; renderPicker(); }
 function openVariationPicker(id, idx) { editingWorkoutId = id; pickerMode = 'variation'; _varTarget = idx; pickerSearch = ''; pickerFilterMuscle = null; renderPicker(); }
 function pickerSetFilter(m) { pickerFilterMuscle = m; renderPicker(); }
+/* The pool you pick from = your saved (non-archived) exercises — same as the
+   Exercises tab — not the whole library. */
+function pickerSource() { return savedExercises().filter(i => !i.archived).map(i => ({ n: i.name, m: i.m || [], e: i.e || [] })); }
+/* Resolve name → a library-like {n,m,e,t}; falls back to your saved list for
+   exercises that live only in history. */
+function resolveLibLike(name) {
+  const lib = findLib(name); if (lib) return lib;
+  const it = savedExercises().find(i => exKeyOf(i.name) === exKeyOf(name));
+  return it ? { n: it.name, m: it.m || [], e: it.e || [], t: 'i' } : null;
+}
 function renderPicker() {
   const w = getWorkout(editingWorkoutId);
   if (!w) return;
@@ -1532,7 +1543,7 @@ function renderPicker() {
   if (isVar && !targetEx) { pickerMode = 'workout'; return renderPicker(); }
   const primaryKey = targetEx ? exKeyOf(targetEx.name) : null;
   const chosen = isVar ? new Set((targetEx.alts || []).map(a => exKeyOf(a.name))) : new Set(w.exercises.map(x => exKeyOf(x.name)));
-  let avail = libAll().filter(x => exAvailable(x) && !isArchived(exKeyOf(x.n)));
+  let avail = pickerSource();
   if (isVar) avail = avail.filter(x => exKeyOf(x.n) !== primaryKey);
   const q = pickerSearch.trim().toLowerCase();
   if (q) avail = avail.filter(x => x.n.toLowerCase().includes(q));
@@ -1541,13 +1552,13 @@ function renderPicker() {
   const groups = {};
   list.forEach(x => { const g = x.m[0]; (groups[g] = groups[g] || []).push(x); });
 
-  let body = `<h3>${isVar ? 'Variations of ' + targetEx.name : 'Add exercises'}</h3><div class="sub mb">${isVar ? 'Pick any number — swap between them mid-workout.' : 'Full library · filtered to your equipment'}</div>
+  let body = `<h3>${isVar ? 'Variations of ' + targetEx.name : 'Add exercises'}</h3><div class="sub mb">${isVar ? 'Pick any number — swap between them mid-workout.' : 'Your exercises — add a new one with “＋ Add a custom exercise”'}</div>
     <input class="pick-search" placeholder="Search exercises…" value="${pickerSearch.replace(/"/g, '&quot;')}" oninput="pickerSearch=this.value; renderPicker();">`;
   body += `<div class="chip-wrap" style="margin:8px 0 2px;"><button class="chip sm ${!pickerFilterMuscle ? 'on' : ''}" onclick="pickerSetFilter(null)">All</button>` +
     MUSCLE.filter(m => present.has(m)).map(m => `<button class="chip sm ${pickerFilterMuscle === m ? 'on' : ''}" onclick="pickerSetFilter('${m}')">${MUSCLE_LABEL[m]}</button>`).join('') + `</div>`;
   body += customAddBtn(isVar ? 'variation' : 'workout');
   if (!list.length) {
-    body += `<div class="empty" style="padding:24px;">No matching exercises. Try a different muscle, a search, add equipment in Settings, or add a custom one above.</div>`;
+    body += `<div class="empty" style="padding:24px;">No matching exercises in your list. Use “＋ Add a custom exercise” above to create one.</div>`;
   } else {
     MUSCLE.forEach(mg => {
       if (!groups[mg]) return;
@@ -1573,7 +1584,7 @@ function pickerToggle(name) {
   const idx = w.exercises.findIndex(x => exKeyOf(x.name) === key);
   if (idx >= 0) { w.exercises.splice(idx, 1); }
   else {
-    const lib = findLib(name); if (!lib) return;
+    const lib = resolveLibLike(name); if (!lib) return;
     const sch = defaultScheme(lib.t);
     w.exercises.push({ id: uid(), name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t, feeders: sch.feeders, sets: sch.sets });
     if (!w.muscles.length) w.muscles = lib.m.slice();
@@ -1588,7 +1599,7 @@ function toggleVariation(name) {
   if (k === exKeyOf(ex.name)) return;
   const i = ex.alts.findIndex(a => exKeyOf(a.name) === k);
   if (i >= 0) ex.alts.splice(i, 1);
-  else { const lib = findLib(name); if (!lib) return; ex.alts.push({ name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t }); }
+  else { const lib = resolveLibLike(name); if (!lib) return; ex.alts.push({ name: lib.n, muscles: lib.m.slice(), equip: lib.e.slice(), type: lib.t }); }
   save(); renderPicker();
 }
 function removeVariation(id, i, ai) { const w = getWorkout(id); if (w && w.exercises[i] && w.exercises[i].alts) { w.exercises[i].alts.splice(ai, 1); save(); renderProgram(); } }
@@ -1599,12 +1610,12 @@ function openSessionPicker() { sessionPickerSearch = ''; renderSessionPicker(); 
 function renderSessionPicker() {
   if (!state.active) return;
   const chosen = new Set(Object.values(state.active.entries).map(e => exKeyOf(normEntry(e).name)));
-  let list = libAll().filter(x => exAvailable(x) && !isArchived(exKeyOf(x.n)));
+  let list = pickerSource();
   const q = sessionPickerSearch.trim().toLowerCase();
   if (q) list = list.filter(x => x.n.toLowerCase().includes(q));
   const groups = {};
   list.forEach(x => { const g = x.m[0]; (groups[g] = groups[g] || []).push(x); });
-  let body = `<h3>Add exercise</h3><div class="sub mb">Adds to today's session · filtered to your equipment</div>
+  let body = `<h3>Add exercise</h3><div class="sub mb">Your exercises — adds to today's session</div>
     <input class="pick-search" placeholder="Search…" value="${sessionPickerSearch.replace(/"/g, '&quot;')}" oninput="sessionPickerSearch=this.value; renderSessionPicker();">`;
   body += customAddBtn('session');
   MUSCLE.forEach(mg => {
@@ -1621,7 +1632,7 @@ function renderSessionPicker() {
   openSheet(body);
 }
 function addSessionExercise(name) {
-  const lib = findLib(name); if (!lib) return;
+  const lib = resolveLibLike(name); if (!lib) return;
   const sch = defaultScheme(lib.t);
   const key = exKeyOf(lib.n);
   if (!state.active.entries[key]) state.active.entries[key] = makeSessionEntry({ name: lib.n, equip: lib.e.slice(), feeders: sch.feeders, sets: sch.sets });

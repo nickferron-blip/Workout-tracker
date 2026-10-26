@@ -50,7 +50,7 @@ This Mac has **only `git`** (no gh/gcloud/node/brew). It still works because:
   `{"source":{"branch":"main","path":"/"}}`. Never print/store that token.
 
 To ship: edit `index.html` → `git push`. Pages redeploys in ~1–2 min. **Bump the
-`CACHE` version in `sw.js`** (currently `workout-tracker-v13`) whenever you change
+`CACHE` version in `sw.js`** (currently `workout-tracker-v14`) whenever you change
 `index.html`, or returning clients get the old cached shell. User hard-refreshes
 (or reopens the PWA). **Drive data is never touched by app updates.**
 
@@ -64,7 +64,9 @@ Mon/Tue/Thu/Fri) is now **only a seed source** used by `seedWorkouts()` +
 - **Workouts** they build (name, colour, muscle groups, ordered exercises, each
   with any number of **variations** = alternate exercises you swap between).
 - **Schedule** they assign (weekday → workoutId | null) in the Program tab.
-- **Equipment** they own (Settings) — filters the exercise picker.
+- **Equipment** they own (Settings) — used by `exAvailable()` to gate which library
+  exercises `savedExercises`/`libAll` surface elsewhere (the picker itself now lists
+  only the user's own exercises, so equipment no longer trims the picker directly).
 - **Custom exercises** (`state.customExercises`, same shape as a library entry)
   added from the picker; merged into the library via `libAll()` / `findLib()`.
 - **Per-exercise meta** (`state.exerciseMeta[nameSlug] = { note, pulley }`) — notes
@@ -123,9 +125,11 @@ session = {
   inserts in `KIND_ORDER` (feeder→top→back-off); only `added:true` sets get a ✕.
 - Prefill (`buildSets`/`setWeightFor`): from the exercise's own last top set —
   **top = last weight, feeders = 50%, back-off = 10% lighter** (×0.75 on deload).
-- Exercise picker (`renderPicker`, workout + variation): shows the **full library**
-  (+ custom, minus archived), equipment-gated, with optional muscle-filter chips
-  (`pickerFilterMuscle`) — it is NOT restricted to the workout's muscle groups.
+- Exercise picker (`renderPicker`/`renderSessionPicker`): the pool is **only your
+  saved (non-archived) exercises** — `pickerSource()`, the same set as the Exercises
+  tab — NOT the full library and NOT equipment-gated. Optional muscle-filter chips
+  (`pickerFilterMuscle`). New exercises are added via "+ Add a custom exercise".
+  (`resolveLibLike` lets history-only exercises resolve for adding.)
 - Variations: `entry.opts` lists primary + `ex.alts`; `switchVariant` swaps mid-set
   and re-prefills untouched sets from the new exercise's history.
 - Other features: compact non-blocking **rest-timer banner** (`#rest-banner`,
