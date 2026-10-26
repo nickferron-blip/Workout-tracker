@@ -591,8 +591,9 @@ function findLib(name) { const k = exKeyOf(name); return _libIndex[k] || (state.
    follows the exercise across workouts, never tied to a single workout. */
 function getMeta(key) { if (!state.exerciseMeta) state.exerciseMeta = {}; if (!state.exerciseMeta[key]) state.exerciseMeta[key] = { note: '', pulley: '' }; return state.exerciseMeta[key]; }
 function roundW(v) { return Math.round(v * 2) / 2; }
+function round5(v) { return Math.round(v / 5) * 5; }
 /* Prefill: top set = last top weight, feeders = 50%, back-off = 10% lighter */
-function setWeightFor(kind, topW) { topW = num(topW); if (!topW) return ''; if (kind === 'feeder') return roundW(topW * 0.5); if (kind === 'backoff') return roundW(topW * 0.9); return roundW(topW); }
+function setWeightFor(kind, topW) { topW = num(topW); if (!topW) return ''; if (kind === 'feeder') return round5(topW * 0.5); if (kind === 'backoff') return round5(topW * 0.9); return roundW(topW); }
 function getWorkout(id) { return (state.workouts || []).find(w => w.id === id) || null; }
 function scheduledWorkoutId(d) { const id = (state.schedule || {})[(d || new Date()).getDay()]; return id && getWorkout(id) ? id : null; }
 function ownedEquip() { const e = state.settings.equipment; return Array.isArray(e) && e.length ? e : ['gym']; }
@@ -1069,7 +1070,7 @@ function startWorkout(id) {
   }
   showTab('today');
 }
-function deloadWeight(w) { const n = num(w); if (!n) return ''; const v = n * 0.75; return Math.round(v * 2) / 2; }
+function deloadWeight(w) { const n = num(w); if (!n) return ''; return round5(n * 0.75); }
 
 /* Build a session entry (supports a primary + optional alternate exercise) */
 function makeSessionEntry(ex) {

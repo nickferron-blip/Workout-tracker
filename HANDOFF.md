@@ -50,7 +50,7 @@ This Mac has **only `git`** (no gh/gcloud/node/brew). It still works because:
   `{"source":{"branch":"main","path":"/"}}`. Never print/store that token.
 
 To ship: edit `index.html` → `git push`. Pages redeploys in ~1–2 min. **Bump the
-`CACHE` version in `sw.js`** (currently `workout-tracker-v15`) whenever you change
+`CACHE` version in `sw.js`** (currently `workout-tracker-v16`) whenever you change
 `index.html`, or returning clients get the old cached shell. User hard-refreshes
 (or reopens the PWA). **Drive data is never touched by app updates.**
 
@@ -127,6 +127,7 @@ session = {
   inserts in `KIND_ORDER` (feeder→top→back-off); only `added:true` sets get a ✕.
 - Prefill (`buildSets`/`setWeightFor`): from the exercise's own last top set —
   **top = last weight, feeders = 50%, back-off = 10% lighter** (×0.75 on deload).
+  Derived feeder/back-off/deload weights are rounded to the nearest **5** (`round5`).
 - Exercise picker (`renderPicker`/`renderSessionPicker`): the pool is **only your
   saved (non-archived) exercises** — `pickerSource()`, the same set as the Exercises
   tab — NOT the full library and NOT equipment-gated. Optional muscle-filter chips
